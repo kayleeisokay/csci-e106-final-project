@@ -2,12 +2,14 @@
 title: "HARVARD EXTENSION SCHOOL"
 subtitle: "EXT CSCI E-106 Model Data Class Group Project Template"
 author:
-- Author One
-- Author Two
-- Author Three
-- Author Four
-- Author Five
-- Author Six
+- Will Greaves
+- Flora Lo
+- Matt Michel
+- Thaylan Toth
+- Kaylee Vo
+- Zhenzhen Yin
+
+
 
 tags: [logistic, neuronal networks, etc..]
 abstract: |
