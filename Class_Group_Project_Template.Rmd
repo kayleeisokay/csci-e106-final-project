@@ -95,10 +95,32 @@ This section will describe the model usage, your conclusions and any regulatory 
 
 
 \newpage
-## I. Description of the data and quality (15 points)
+## II. Description of the data and quality (15 points)
 
 *Here you need to review your data, the statistical test applied to understand the predictors and the response and how are they correlated. Extensive graph analysis is recommended. Is the data continuous, or categorical, do any transformation needed? Do you need dummies? *
 
+```{r}
+library(lubridate)
+library(ggplot2)
+library(corrplot)
+```
+
+```{r}
+# Data cleaning (date, price)
+HouseSales$date = gsub("T000000", "", HouseSales$date)
+HouseSales$date = as.numeric(HouseSales$date)
+# HouseSales$date = ymd(HouseSales$date)
+HouseSales$price = gsub("[$,]", "", HouseSales$price)
+HouseSales$price = as.numeric(HouseSales$price)
+```
+
+```{r}
+cor_matrix = round(cor(HouseSales), 3)
+cor_matrix
+```
+```{r}
+corrplot(cor_matrix, method = "circle", title = "Correlation Matrix")
+```
 
 \newpage
 ## III. Model Development Process (15 points)
