@@ -119,7 +119,7 @@ cor_matrix = round(cor(HouseSales), 3)
 cor_matrix
 ```
 ```{r}
-corrplot(cor_matrix, method = "circle", title = "Correlation Matrix")
+corrplot(cor_matrix, method = "circle")
 ```
 
 \newpage
