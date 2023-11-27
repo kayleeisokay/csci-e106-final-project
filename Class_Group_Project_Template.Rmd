@@ -138,7 +138,6 @@ test_data <- HouseSales[-index, ]
 
 # Model 1: Logistic Regression
 
-
 # Create a binary variable 'high_price' based on the chosen percentile
 logisticdf <- HouseSales
 logisticdf$price <- parse_number(logisticdf$price)
@@ -148,14 +147,14 @@ logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
 logisticdf <- logisticdf %>%
   select(-price)
 
-# Split data 
+# Split data for logistic regrssion model
 set.seed(123)  # 
 split_ratio <- 0.7  # 70% training, 30% testing
 index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
 train_data_logistic <- logisticdf[index, ]
 test_data_logistic <- logisticdf[-index, ]
 
-#Build model
+#Build basic logistic regrssion model
 logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
 summary(logistic_model)
 
