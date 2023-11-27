@@ -113,9 +113,9 @@ This section will describe the model usage, your conclusions and any regulatory 
 
 \newpage
 ## V. Challenger Models (15 points)
-
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
+```{r}
 # Load libraries
 library(caret)
 library(rpart)
@@ -225,7 +225,7 @@ compare_model_performance <- function(models, model_names, data_train, data_test
   # Create a table to compare model results
   kable(model_results, format = "markdown")
 }
-
+```
 
 \newpage
 ## VI. Model Limitation and Assumptions (15 points)
