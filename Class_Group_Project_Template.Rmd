@@ -206,6 +206,9 @@ p <- dim(model.matrix(baseline.model)[, -1])[2]
 
 cbind(CalcTestMetrics(pred, act, n, p))
 ```
+#TODO
+1. Add plots (e.g. scale location, residual vs fitted)
+2. Normality plots
 
 \newpage
 ## IV. Model Performance Testing (15 points)
