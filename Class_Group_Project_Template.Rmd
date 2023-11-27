@@ -9,8 +9,6 @@ author:
 - Kaylee Vo
 - Zhenzhen Yin
 
-
-
 tags: [logistic, neuronal networks, etc..]
 abstract: |
   This is the location for your abstract.
@@ -106,6 +104,108 @@ This section will describe the model usage, your conclusions and any regulatory 
 ## III. Model Development Process (15 points)
 
 *Build a regression model to predict price.  And of course,  create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc. *
+
+```{r section3}
+set.seed(1023)
+kc.house.df <- read.csv("KC_House_Sales.csv")
+
+#Dropping variables as specified
+drop.vars <- c("id", "lat", "long")
+kc.house.df <- dplyr::select(kc.house.df, -drop.vars)
+```
+
+```{r section3}
+#Feature Transformations
+transform_price <- function(kc.house.df){
+  #Converts price from string to double
+  kc.house.df$price <- gsub("\\$", "", kc.house.df$price)
+  kc.house.df$price <- gsub("\\,", "", kc.house.df$price)
+  price <- as.double(kc.house.df$price)
+  
+  return (price)
+}
+
+transform_date <- function(kc.house.df){
+  #Converts date to month and year
+  year <- as.integer(substring(kc.house.df$date, 1, 4))
+  month <- as.integer(substring(kc.house.df$date, 5, 6))
+  
+  return (list(year = year, month = month))
+}
+
+#Ideas
+#Age of home at sale
+#- if renovated then restart the clock at renovation
+```
+
+```{r section3}
+#Apply transformations
+kc.house.df$price <- transform_price(kc.house.df)
+
+kc.house.df$year <- transform_date(kc.house.df)[["year"]]
+kc.house.df$month <- transform_date(kc.house.df)[["month"]]
+kc.house.df$date <- NULL
+
+#Remove collinear variables
+
+# sqft_basement + sqft_above = sqft_living
+kc.house.df$sqft_basement <- NULL
+```
+
+```{r section3}
+set.seed(1023)
+
+#use 70% of dataset as training set and 30% as test set
+train_prop <- 0.7
+test_prop <- 0.3
+
+sample <- sample(
+  c(TRUE, FALSE), 
+  nrow(kc.house.df), 
+  replace=TRUE, 
+  prob=c(train_prop, test_prop)
+)
+kc.house.train <- kc.house.df [sample, ]
+kc.house.test<- kc.house.df [!sample, ]
+```
+
+```{r}
+response <- "price"
+
+#baseline model
+baseline.model <- lm(price ~ . , data = kc.house.train)
+summary(baseline.model)
+```
+```{r}
+#evaluate on test data
+
+CalcTestMetrics <- function(pred, act, n, p) {
+  SST <- var(act)*(length(act)-1)
+  SSE <- sum((act-pred)^2)
+  SSR <- sum(pred - mean(act))^2
+  rsquared <- 1- SSE/SST
+  
+  adj.rsquared <- 1 - (((1 - rsquared)*(n-1)) / (n-p-1))
+  mse <- (sum(act - pred)^2) / n
+  mae <- (sum(abs(act-pred))) / n
+  
+  return (
+    list(
+      adj.rsquared = adj.rsquared,
+      rsquared = rsquared,
+      mse = mse,
+      mae = mae
+    )
+  )
+}
+
+pred <- predict(baseline.model, kc.house.test)
+act <- kc.house.test[, response]
+n <- dim(model.matrix(baseline.model)[, -1])[1]
+p <- dim(model.matrix(baseline.model)[, -1])[2]
+
+cbind(CalcTestMetrics(pred, act, n, p))
+```
 
 \newpage
 ## IV. Model Performance Testing (15 points)
