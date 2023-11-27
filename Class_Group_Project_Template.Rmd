@@ -30,6 +30,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
+library(dplyr)
 HouseSales<-read.csv("KC_House_Sales.csv")
 ```
 \newpage
@@ -109,42 +110,67 @@ This section will describe the model usage, your conclusions and any regulatory 
 set.seed(1023)
 kc.house.df <- read.csv("KC_House_Sales.csv")
 
+response <- "price"
+
 #Dropping variables as specified
 drop.vars <- c("id", "lat", "long")
 kc.house.df <- dplyr::select(kc.house.df, -drop.vars)
+
+#Renaming to conform to unified convention
+kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
 ```
 
 ```{r section3}
 #Feature Transformations
 transform_price <- function(kc.house.df){
   #Converts price from string to double
-  kc.house.df$price <- gsub("\\$", "", kc.house.df$price)
-  kc.house.df$price <- gsub("\\,", "", kc.house.df$price)
-  price <- as.double(kc.house.df$price)
+  price <- parse_number(kc.house.df$price)
   
   return (price)
 }
 
 transform_date <- function(kc.house.df){
   #Converts date to month and year
-  year <- as.integer(substring(kc.house.df$date, 1, 4))
-  month <- as.integer(substring(kc.house.df$date, 5, 6))
+  year_sold <- as.integer(substring(kc.house.df$date, 1, 4))
+  month_sold <- as.integer(substring(kc.house.df$date, 5, 6))
   
-  return (list(year = year, month = month))
+  return (list(year_sold = year_sold, month_sold = month_sold))
 }
 
-#Ideas
-#Age of home at sale
-#- if renovated then restart the clock at renovation
+#Feature Ideas
+#Quality Adjusted Features
+transform_sqft_adj_grade <- function(kc.house.df){
+  
+  sqft_adj_grade <- kc.house.df[, "sqft_living"] / kc.house.df[, "grade"]
+  
+  return (sqft_adj_grade)
+}
+
+transform_sqft_adj_condition <- function(kc.house.df){
+  
+  sqft_adj_condition <- kc.house.df[, "sqft_living"] / kc.house.df[, "condition"]
+  
+  return (sqft_adj_condition)
+}
+
+transform_sqft_adj_waterfront <- function(kc.house.df){
+  
+  sqft_adj_waterfront <- kc.house.df[, "sqft_living"] * kc.house.df[, "waterfront"]
+  
+  return (sqft_adj_waterfront)
+}
 ```
 
 ```{r section3}
 #Apply transformations
 kc.house.df$price <- transform_price(kc.house.df)
 
-kc.house.df$year <- transform_date(kc.house.df)[["year"]]
-kc.house.df$month <- transform_date(kc.house.df)[["month"]]
+kc.house.df$year_sold <- transform_date(kc.house.df)[["year_sold"]]
+kc.house.df$month_sold <- transform_date(kc.house.df)[["month_sold"]]
 kc.house.df$date <- NULL
+kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
+kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
+kc.house.df$sqft_adj_waterfront<- transform_sqft_adj_waterfront(kc.house.df)
 
 #Remove collinear variables
 
@@ -165,15 +191,17 @@ sample <- sample(
   replace=TRUE, 
   prob=c(train_prop, test_prop)
 )
-kc.house.train <- kc.house.df [sample, ]
-kc.house.test<- kc.house.df [!sample, ]
+
+kc.house.train.X <- kc.house.df[sample, -which(names(kc.house.df) %in% c(response))]
+kc.house.train.y <- kc.house.df [sample, response]
+
+kc.house.test.X <- kc.house.df [!sample, -which(names(kc.house.df) %in% c(response))]
+kc.house.test.y <- kc.house.df [!sample, response]
 ```
 
 ```{r}
-response <- "price"
-
 #baseline model
-baseline.model <- lm(price ~ . , data = kc.house.train)
+baseline.model <- lm(price ~ . , data = cbind(price = kc.house.train.y, kc.house.train.X))
 summary(baseline.model)
 ```
 ```{r}
@@ -199,8 +227,8 @@ CalcTestMetrics <- function(pred, act, n, p) {
   )
 }
 
-pred <- predict(baseline.model, kc.house.test)
-act <- kc.house.test[, response]
+pred <- predict(baseline.model, kc.house.test.X)
+act <- kc.house.test.y
 n <- dim(model.matrix(baseline.model)[, -1])[1]
 p <- dim(model.matrix(baseline.model)[, -1])[2]
 
