@@ -116,6 +116,117 @@ This section will describe the model usage, your conclusions and any regulatory 
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
+# Load libraries
+library(caret)
+library(rpart)
+library(nnet)
+library(knitr)
+library(dplyr)
+library(stringr)
+library(readr)
+
+HouseSales <- read.csv('KC_House_Sales.csv')
+
+# Step a: Data Splitting
+set.seed(123)  # 
+split_ratio <- 0.7  # 70% training, 30% testing
+index <- sample(1:nrow(HouseSales), size = round(split_ratio * nrow(HouseSales)))
+train_data <- HouseSales[index, ]
+test_data <- HouseSales[-index, ]
+
+# Step b: Model Building
+
+# Model 1: Logistic Regression
+
+
+# Create a binary variable 'high_price' based on the chosen percentile
+logisticdf <- HouseSales
+logisticdf$price <- parse_number(logisticdf$price)
+logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
+
+# Create a new dataframe with 'high_price' column
+logisticdf <- logisticdf %>%
+  select(-price)
+
+# Split data 
+set.seed(123)  # 
+split_ratio <- 0.7  # 70% training, 30% testing
+index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
+train_data_logistic <- logisticdf[index, ]
+test_data_logistic <- logisticdf[-index, ]
+
+#Build model
+logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
+summary(logistic_model)
+
+# Model 2: Regression Tree
+tree_model <- rpart(price ~ ., data = train_data)
+printcp(tree_model)  # Display complexity parameter plot
+plot(tree_model)  # Visualize the decision tree
+
+# Model 3: Neural Network
+nn_model <- neuralnet(price ~ ., data = train_data, hidden = c(5, 2), linear.output = TRUE)
+
+# Tune neural network hyperparameters - placehlder
+
+# Step c: Model Evaluation
+
+# Model 1: Logistic Regression
+logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
+logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
+cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+
+# Model 2: Regression Tree
+tree_predictions <- predict(tree_model, newdata = test_data)
+tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+cat("Regression Tree RMSE:", tree_rmse, "\n")
+
+# Model 3: Neural Network
+nn_predictions <- predict(nn_model, newdata = test_data)
+# Calculate relevant performance metrics for the neural network model
+
+# Step d: Model Comparison (Choose the best model based on evaluation metrics)
+
+# Calculate evaluation metrics for all models
+logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
+logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
+cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+
+tree_predictions <- predict(tree_model, newdata = test_data)
+tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+cat("Regression Tree RMSE:", tree_rmse, "\n")
+
+nn_predictions <- predict(nn_model, newdata = test_data)
+cat("NN RMSE:", tree_rmse, "\n")
+
+# Step e: Backtesting - placeholder 
+
+# Function to compare model performance
+compare_model_performance <- function(models, model_names, data_train, data_test) {
+  rmse_values <- c()
+  rsquared_values <- c()
+  mape_values <- c()
+
+  for (i in 1:length(models)) {
+    model <- models[[i]]
+    predictions <- predict(model, newdata = data_test)
+    rmse <- sqrt(mean((data_test$price - predictions)^2))
+    rsquared <- cor(data_test$price, predictions)^2
+    mape <- mean(abs((data_test$price - predictions) / data_test$price)) * 100
+
+    rmse_values <- c(rmse_values, rmse)
+    rsquared_values <- c(rsquared_values, rsquared)
+    mape_values <- c(mape_values, mape)
+  }
+
+  # Create a data frame to hold the results
+  model_results <- data.frame(Model = model_names, RMSE = rmse_values, R_squared = rsquared_values, MAPE = mape_values)
+
+  # Create a table to compare model results
+  kable(model_results, format = "markdown")
+}
+
+
 \newpage
 ## VI. Model Limitation and Assumptions (15 points)
 
