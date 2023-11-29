@@ -8,20 +8,18 @@ author:
 - Thaylan Toth
 - Kaylee Vo
 - Zhenzhen Yin
-
 tags: [logistic, neuronal networks, etc..]
 abstract: |
   This is the location for your abstract.
-
   It must consist of two paragraphs.
 date: "`r format(Sys.time(), '%d %B %Y')`"
 geometry: margin=1.3cm
 output:
+  html_document:
+    df_print: paged
   pdf_document:
     toc: yes
     toc_depth: 2
-  html_document:
-    df_print: paged
 editor_options: 
   markdown: 
     wrap: 72
@@ -111,14 +109,25 @@ library(ggplot2)
 library(corrplot)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
+# Flora: Commenting this chunk out for deletion as I have copied over code from Part IV
 # Data cleaning (date, price)
-HouseSales$date = gsub("T000000", "", HouseSales$date)
-HouseSales$date = as.numeric(HouseSales$date)
+#HouseSales$date = gsub("T000000", "", HouseSales$date)
+#HouseSales$date = as.numeric(HouseSales$date)
 # HouseSales$date = ymd(HouseSales$date)
-HouseSales$price = gsub("[$,]", "", HouseSales$price)
-HouseSales$price = as.numeric(HouseSales$price)
+#HouseSales$price = gsub("[$,]", "", HouseSales$price)
+#HouseSales$price = as.numeric(HouseSales$price)
 ```
+
+```{r}
+# Data cleaning (Separate date into year and month)
+HouseSales$year_sold <- as.integer(substring(HouseSales$date, 1, 4))
+HouseSales$month_sold <- as.integer(substring(HouseSales$date, 5, 6))
+HouseSales$date <-NULL
+# Data cleaning (price to numeric)
+HouseSales$price<-parse_number(HouseSales$price)
+```
+
 
 ```{r}
 cor_matrix = round(cor(HouseSales), 3)
@@ -134,37 +143,40 @@ corrplot(cor_matrix, method = "circle")
 
 *Build a regression model to predict price.  And of course,  create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc. *
 
-```{r section3}
+```{r section3a}
 set.seed(1023)
-kc.house.df <- read.csv("KC_House_Sales.csv")
+# kc.house.df <- read.csv("KC_House_Sales.csv") # Flora: commenting this out as dataset has been read in as HouseSales (line 32)
 
 response <- "price"
 
 #Dropping variables as specified
 drop.vars <- c("id", "lat", "long")
-kc.house.df <- dplyr::select(kc.house.df, -drop.vars)
+kc.house.df <- dplyr::select(HouseSales, -drop.vars) # Flora: Calling HouseSales in select() here (to align with line 32)
 
 #Renaming to conform to unified convention
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
 ```
 
-```{r section3}
-#Feature Transformations
-transform_price <- function(kc.house.df){
+```{r section3b, eval=FALSE, include=FALSE}
+# Flora: suggest removing this chunk since it is now duplicated from Part II
+# Feature Transformations
+#transform_price <- function(kc.house.df){
   #Converts price from string to double
-  price <- parse_number(kc.house.df$price)
+#  price <- parse_number(kc.house.df$price)
   
-  return (price)
-}
+#  return (price)
+#}
 
-transform_date <- function(kc.house.df){
+#transform_date <- function(kc.house.df){
   #Converts date to month and year
-  year_sold <- as.integer(substring(kc.house.df$date, 1, 4))
-  month_sold <- as.integer(substring(kc.house.df$date, 5, 6))
+#  year_sold <- as.integer(substring(kc.house.df$date, 1, 4))
+#  month_sold <- as.integer(substring(kc.house.df$date, 5, 6))
   
-  return (list(year_sold = year_sold, month_sold = month_sold))
-}
+#  return (list(year_sold = year_sold, month_sold = month_sold))
+#}
+```
 
+```{r section3b}
 #Feature Ideas
 #Quality Adjusted Features
 transform_sqft_adj_grade <- function(kc.house.df){
@@ -189,42 +201,42 @@ transform_sqft_adj_waterfront <- function(kc.house.df){
 }
 ```
 
-```{r section3}
-#Apply transformations
-kc.house.df$price <- transform_price(kc.house.df)
+```{r section3c}
+#Apply transformations 
+# Flora: I modified and moved price/year/month transformation code to Part II
 
-kc.house.df$year_sold <- transform_date(kc.house.df)[["year_sold"]]
-kc.house.df$month_sold <- transform_date(kc.house.df)[["month_sold"]]
-kc.house.df$date <- NULL
 kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
 kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
 kc.house.df$sqft_adj_waterfront<- transform_sqft_adj_waterfront(kc.house.df)
 
 #Remove collinear variables
-
 # sqft_basement + sqft_above = sqft_living
 kc.house.df$sqft_basement <- NULL
 ```
 
-```{r section3}
+```{r section3d}
 set.seed(1023)
 
 #use 70% of dataset as training set and 30% as test set
 train_prop <- 0.7
-test_prop <- 0.3
 
-sample <- sample(
-  c(TRUE, FALSE), 
-  nrow(kc.house.df), 
-  replace=TRUE, 
-  prob=c(train_prop, test_prop)
-)
 
-kc.house.train.X <- kc.house.df[sample, -which(names(kc.house.df) %in% c(response))]
-kc.house.train.y <- kc.house.df [sample, response]
+#test_prop <- 0.3
+#sample <- sample(
+#  c(TRUE, FALSE), 
+#  nrow(kc.house.df), 
+#  replace=TRUE, 
+#  prob=c(train_prop, test_prop)
+#)
 
-kc.house.test.X <- kc.house.df [!sample, -which(names(kc.house.df) %in% c(response))]
-kc.house.test.y <- kc.house.df [!sample, response]
+# Flora: I have commented out the train/test splitting code here and replaced with similar code from Part V instead. That code is more accurate in selecting 70% of samples, which should be 15129 samples.
+
+index <- sample(1:nrow(HouseSales), size = round(train_prop * nrow(kc.house.df)))
+kc.house.train.X <- kc.house.df[index, -which(names(kc.house.df) %in% c(response))] # modified slightly 
+kc.house.train.y <- kc.house.df [index, response]
+
+kc.house.test.X <- kc.house.df [-index, -which(names(kc.house.df) %in% c(response))]
+kc.house.test.y <- kc.house.df [-index, response]
 ```
 
 ```{r}
@@ -233,6 +245,18 @@ baseline.model <- lm(price ~ . , data = cbind(price = kc.house.train.y, kc.house
 summary(baseline.model)
 ```
 
+
+\newpage
+## IV. Model Performance Testing (15 points)
+
+*Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
+
+#TODO
+1. Stepwise feature selection
+2. Add plots (e.g. scale location, residual vs fitted)
+3. Normality plots
+
+TODO: The following code needs to be updated once we have the updated models from stepwise feature selection.
 ```{r}
 #evaluate on test data
 
@@ -263,14 +287,6 @@ p <- dim(model.matrix(baseline.model)[, -1])[2]
 
 cbind(CalcTestMetrics(pred, act, n, p))
 ```
-#TODO
-1. Add plots (e.g. scale location, residual vs fitted)
-2. Normality plots
-
-\newpage
-## IV. Model Performance Testing (15 points)
-
-*Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
 
 
 \newpage
