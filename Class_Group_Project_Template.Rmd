@@ -2,12 +2,12 @@
 title: "HARVARD EXTENSION SCHOOL"
 subtitle: "EXT CSCI E-106 Model Data Class Group Project Template"
 author:
-- Author One
-- Author Two
-- Author Three
-- Author Four
-- Author Five
-- Author Six
+- Will Greaves
+- Flora Lo
+- Matt Michel
+- Thaylan Toth
+- Kaylee Vo
+- Zhenzhen Yin
 
 tags: [logistic, neuronal networks, etc..]
 abstract: |
@@ -30,6 +30,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
+library(dplyr)
 HouseSales<-read.csv("KC_House_Sales.csv")
 ```
 \newpage
@@ -93,17 +94,178 @@ This section will describe the model usage, your conclusions and any regulatory 
 
 *This section needs to introduce the reader to the problem to be resolved, the purpose, and the scope of the statistical testing applied. What you are doing with your prediction? What is the purpose of the model? What methods were trained on the data, how large is the test sample, and how did you build the model?*
 
+In this project, our goal is to build a statistical model that can predict house sales prices in Kings county, USA based on house sales data collected in that area between May 2014 and May 2015. The dataset contains information on 21613 houses, including the sale price, number of rooms, square footage, year built and renovated, view, and condition of the property. The house sale price was used as the outcome variable and all other variables were considered as independent variables. 70% of the dataset was used as training set and 30% was used as testing set. 
+
+Using this framework, we built several different models using linear regression, logistic regression, regression tree, and neural network. When building each model, feature selection methods were used and the appropriate diagnostic tests were applied to verify that model assumptions were met. <TO DO: Can elaborate more on each model>
+
+Finally, the performance of each models was evaluated by its accuracy in predicting house prices in the test set, specifically by examining the MSE of predicted values. Based on that, we propose that the best predictive model is _____. This model indicated that the most important factors that influence house prices in King County, USA are ______. 
 
 \newpage
-## I. Description of the data and quality (15 points)
+## II. Description of the data and quality (15 points)
 
 *Here you need to review your data, the statistical test applied to understand the predictors and the response and how are they correlated. Extensive graph analysis is recommended. Is the data continuous, or categorical, do any transformation needed? Do you need dummies? *
+
+```{r}
+library(lubridate)
+library(ggplot2)
+library(corrplot)
+```
+
+```{r}
+# Data cleaning (date, price)
+HouseSales$date = gsub("T000000", "", HouseSales$date)
+HouseSales$date = as.numeric(HouseSales$date)
+# HouseSales$date = ymd(HouseSales$date)
+HouseSales$price = gsub("[$,]", "", HouseSales$price)
+HouseSales$price = as.numeric(HouseSales$price)
+```
+
+```{r}
+cor_matrix = round(cor(HouseSales), 3)
+cor_matrix
+```
+```{r}
+corrplot(cor_matrix, method = "circle")
+```
 
 
 \newpage
 ## III. Model Development Process (15 points)
 
 *Build a regression model to predict price.  And of course,  create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc. *
+
+```{r section3}
+set.seed(1023)
+kc.house.df <- read.csv("KC_House_Sales.csv")
+
+response <- "price"
+
+#Dropping variables as specified
+drop.vars <- c("id", "lat", "long")
+kc.house.df <- dplyr::select(kc.house.df, -drop.vars)
+
+#Renaming to conform to unified convention
+kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
+```
+
+```{r section3}
+#Feature Transformations
+transform_price <- function(kc.house.df){
+  #Converts price from string to double
+  price <- parse_number(kc.house.df$price)
+  
+  return (price)
+}
+
+transform_date <- function(kc.house.df){
+  #Converts date to month and year
+  year_sold <- as.integer(substring(kc.house.df$date, 1, 4))
+  month_sold <- as.integer(substring(kc.house.df$date, 5, 6))
+  
+  return (list(year_sold = year_sold, month_sold = month_sold))
+}
+
+#Feature Ideas
+#Quality Adjusted Features
+transform_sqft_adj_grade <- function(kc.house.df){
+  
+  sqft_adj_grade <- kc.house.df[, "sqft_living"] / kc.house.df[, "grade"]
+  
+  return (sqft_adj_grade)
+}
+
+transform_sqft_adj_condition <- function(kc.house.df){
+  
+  sqft_adj_condition <- kc.house.df[, "sqft_living"] / kc.house.df[, "condition"]
+  
+  return (sqft_adj_condition)
+}
+
+transform_sqft_adj_waterfront <- function(kc.house.df){
+  
+  sqft_adj_waterfront <- kc.house.df[, "sqft_living"] * kc.house.df[, "waterfront"]
+  
+  return (sqft_adj_waterfront)
+}
+```
+
+```{r section3}
+#Apply transformations
+kc.house.df$price <- transform_price(kc.house.df)
+
+kc.house.df$year_sold <- transform_date(kc.house.df)[["year_sold"]]
+kc.house.df$month_sold <- transform_date(kc.house.df)[["month_sold"]]
+kc.house.df$date <- NULL
+kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
+kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
+kc.house.df$sqft_adj_waterfront<- transform_sqft_adj_waterfront(kc.house.df)
+
+#Remove collinear variables
+
+# sqft_basement + sqft_above = sqft_living
+kc.house.df$sqft_basement <- NULL
+```
+
+```{r section3}
+set.seed(1023)
+
+#use 70% of dataset as training set and 30% as test set
+train_prop <- 0.7
+test_prop <- 0.3
+
+sample <- sample(
+  c(TRUE, FALSE), 
+  nrow(kc.house.df), 
+  replace=TRUE, 
+  prob=c(train_prop, test_prop)
+)
+
+kc.house.train.X <- kc.house.df[sample, -which(names(kc.house.df) %in% c(response))]
+kc.house.train.y <- kc.house.df [sample, response]
+
+kc.house.test.X <- kc.house.df [!sample, -which(names(kc.house.df) %in% c(response))]
+kc.house.test.y <- kc.house.df [!sample, response]
+```
+
+```{r}
+#baseline model
+baseline.model <- lm(price ~ . , data = cbind(price = kc.house.train.y, kc.house.train.X))
+summary(baseline.model)
+```
+
+```{r}
+#evaluate on test data
+
+CalcTestMetrics <- function(pred, act, n, p) {
+  SST <- var(act)*(length(act)-1)
+  SSE <- sum((act-pred)^2)
+  SSR <- sum(pred - mean(act))^2
+  rsquared <- 1- SSE/SST
+  
+  adj.rsquared <- 1 - (((1 - rsquared)*(n-1)) / (n-p-1))
+  mse <- (sum(act - pred)^2) / n
+  mae <- (sum(abs(act-pred))) / n
+  
+  return (
+    list(
+      adj.rsquared = adj.rsquared,
+      rsquared = rsquared,
+      mse = mse,
+      mae = mae
+    )
+  )
+}
+
+pred <- predict(baseline.model, kc.house.test.X)
+act <- kc.house.test.y
+n <- dim(model.matrix(baseline.model)[, -1])[1]
+p <- dim(model.matrix(baseline.model)[, -1])[2]
+
+cbind(CalcTestMetrics(pred, act, n, p))
+```
+#TODO
+1. Add plots (e.g. scale location, residual vs fitted)
+2. Normality plots
 
 \newpage
 ## IV. Model Performance Testing (15 points)
@@ -115,6 +277,117 @@ This section will describe the model usage, your conclusions and any regulatory 
 ## V. Challenger Models (15 points)
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
+
+```{r}
+# Load libraries
+library(caret)
+library(rpart)
+library(nnet)
+library(knitr)
+library(dplyr)
+library(stringr)
+library(readr)
+
+HouseSales <- read.csv('KC_House_Sales.csv')
+
+# Step a: Data Splitting
+set.seed(123)  # 
+split_ratio <- 0.7  # 70% training, 30% testing
+index <- sample(1:nrow(HouseSales), size = round(split_ratio * nrow(HouseSales)))
+train_data <- HouseSales[index, ]
+test_data <- HouseSales[-index, ]
+
+# Step b: Model Building
+
+# Model 1: Logistic Regression
+
+# Create a binary variable 'high_price' based on the chosen percentile
+logisticdf <- HouseSales
+logisticdf$price <- parse_number(logisticdf$price)
+logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
+
+# Create a new dataframe with 'high_price' column
+logisticdf <- logisticdf %>%
+  select(-price)
+
+# Split data for logistic regrssion model
+set.seed(123)  # 
+split_ratio <- 0.7  # 70% training, 30% testing
+index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
+train_data_logistic <- logisticdf[index, ]
+test_data_logistic <- logisticdf[-index, ]
+
+#Build basic logistic regrssion model
+logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
+summary(logistic_model)
+
+# Model 2: Regression Tree
+tree_model <- rpart(price ~ ., data = train_data)
+printcp(tree_model)  # Display complexity parameter plot
+plot(tree_model)  # Visualize the decision tree
+
+# Model 3: Neural Network
+nn_model <- neuralnet(price ~ ., data = train_data, hidden = c(5, 2), linear.output = TRUE)
+
+# Tune neural network hyperparameters - placehlder
+
+# Step c: Model Evaluation
+
+# Model 1: Logistic Regression
+logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
+logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
+cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+
+# Model 2: Regression Tree
+tree_predictions <- predict(tree_model, newdata = test_data)
+tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+cat("Regression Tree RMSE:", tree_rmse, "\n")
+
+# Model 3: Neural Network
+nn_predictions <- predict(nn_model, newdata = test_data)
+# Calculate relevant performance metrics for the neural network model
+
+# Step d: Model Comparison (Choose the best model based on evaluation metrics)
+
+# Calculate evaluation metrics for all models
+logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
+logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
+cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+
+tree_predictions <- predict(tree_model, newdata = test_data)
+tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+cat("Regression Tree RMSE:", tree_rmse, "\n")
+
+nn_predictions <- predict(nn_model, newdata = test_data)
+cat("NN RMSE:", tree_rmse, "\n")
+
+# Step e: Backtesting - placeholder 
+
+# Function to compare model performance
+compare_model_performance <- function(models, model_names, data_train, data_test) {
+  rmse_values <- c()
+  rsquared_values <- c()
+  mape_values <- c()
+
+  for (i in 1:length(models)) {
+    model <- models[[i]]
+    predictions <- predict(model, newdata = data_test)
+    rmse <- sqrt(mean((data_test$price - predictions)^2))
+    rsquared <- cor(data_test$price, predictions)^2
+    mape <- mean(abs((data_test$price - predictions) / data_test$price)) * 100
+
+    rmse_values <- c(rmse_values, rmse)
+    rsquared_values <- c(rsquared_values, rsquared)
+    mape_values <- c(mape_values, mape)
+  }
+
+  # Create a data frame to hold the results
+  model_results <- data.frame(Model = model_names, RMSE = rmse_values, R_squared = rsquared_values, MAPE = mape_values)
+
+  # Create a table to compare model results
+  kable(model_results, format = "markdown")
+}
+```
 
 \newpage
 ## VI. Model Limitation and Assumptions (15 points)
