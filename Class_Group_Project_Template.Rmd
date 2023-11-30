@@ -109,15 +109,6 @@ library(ggplot2)
 library(corrplot)
 ```
 
-```{r eval=FALSE, include=FALSE}
-# Flora: Commenting this chunk out for deletion as I have copied over code from Part IV
-# Data cleaning (date, price)
-#HouseSales$date = gsub("T000000", "", HouseSales$date)
-#HouseSales$date = as.numeric(HouseSales$date)
-# HouseSales$date = ymd(HouseSales$date)
-#HouseSales$price = gsub("[$,]", "", HouseSales$price)
-#HouseSales$price = as.numeric(HouseSales$price)
-```
 
 ```{r}
 # Data cleaning (Separate date into year and month)
@@ -145,36 +136,17 @@ corrplot(cor_matrix, method = "circle")
 
 ```{r section3a}
 set.seed(1023)
-# kc.house.df <- read.csv("KC_House_Sales.csv") # Flora: commenting this out as dataset has been read in as HouseSales (line 32)
 
 response <- "price"
 
 #Dropping variables as specified
 drop.vars <- c("id", "lat", "long")
-kc.house.df <- dplyr::select(HouseSales, -drop.vars) # Flora: Calling HouseSales in select() here (to align with line 32)
+kc.house.df <- dplyr::select(HouseSales, -drop.vars) 
 
 #Renaming to conform to unified convention
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
 ```
 
-```{r section3b, eval=FALSE, include=FALSE}
-# Flora: suggest removing this chunk since it is now duplicated from Part II
-# Feature Transformations
-#transform_price <- function(kc.house.df){
-  #Converts price from string to double
-#  price <- parse_number(kc.house.df$price)
-  
-#  return (price)
-#}
-
-#transform_date <- function(kc.house.df){
-  #Converts date to month and year
-#  year_sold <- as.integer(substring(kc.house.df$date, 1, 4))
-#  month_sold <- as.integer(substring(kc.house.df$date, 5, 6))
-  
-#  return (list(year_sold = year_sold, month_sold = month_sold))
-#}
-```
 
 ```{r section3b}
 #Feature Ideas
@@ -203,7 +175,6 @@ transform_sqft_adj_waterfront <- function(kc.house.df){
 
 ```{r section3c}
 #Apply transformations 
-# Flora: I modified and moved price/year/month transformation code to Part II
 
 kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
 kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
@@ -219,17 +190,6 @@ set.seed(1023)
 
 #use 70% of dataset as training set and 30% as test set
 train_prop <- 0.7
-
-
-#test_prop <- 0.3
-#sample <- sample(
-#  c(TRUE, FALSE), 
-#  nrow(kc.house.df), 
-#  replace=TRUE, 
-#  prob=c(train_prop, test_prop)
-#)
-
-# Flora: I have commented out the train/test splitting code here and replaced with similar code from Part V instead. That code is more accurate in selecting 70% of samples, which should be 15129 samples.
 
 index <- sample(1:nrow(HouseSales), size = round(train_prop * nrow(kc.house.df)))
 kc.house.train.X <- kc.house.df[index, -which(names(kc.house.df) %in% c(response))] # modified slightly 
@@ -267,7 +227,7 @@ CalcTestMetrics <- function(pred, act, n, p) {
   rsquared <- 1- SSE/SST
   
   adj.rsquared <- 1 - (((1 - rsquared)*(n-1)) / (n-p-1))
-  mse <- (sum(act - pred)^2) / n
+  mse <- sum((act - pred)^2) / (n-p)
   mae <- (sum(abs(act-pred))) / n
   
   return (
