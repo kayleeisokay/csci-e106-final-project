@@ -160,7 +160,7 @@ corrplot(cor_matrix, method = "circle")
 par(mfrow=c(2,2))
 
 for (i in 1:ncol(df)){
-  hist(df[,i], main = names(df[i]), xlab = NULL)
+  hist(df[,i], main = names(df[i]), xlab = NULL, col = "lightblue")
 }
 
 ```
