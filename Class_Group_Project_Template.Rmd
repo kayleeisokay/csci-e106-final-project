@@ -100,7 +100,6 @@ This section will describe the model usage, your conclusions and any regulatory 
 *Here you need to review your data, the statistical test applied to understand the predictors and the response and how are they correlated. Extensive graph analysis is recommended. Is the data continuous, or categorical, do any transformation needed? Do you need dummies? *
 
 ```{r}
-library(lubridate)
 library(ggplot2)
 library(corrplot)
 ```
@@ -157,6 +156,14 @@ cor_matrix
 corrplot(cor_matrix, method = "circle")
 ```
 
+```{r}
+par(mfrow=c(2,2))
+
+for (i in 1:ncol(df)){
+  hist(df[,i], main = names(df[i]), xlab = NULL)
+}
+
+```
 
 \newpage
 ## III. Model Development Process (15 points)
