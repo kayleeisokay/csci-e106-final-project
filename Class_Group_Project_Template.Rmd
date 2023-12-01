@@ -109,21 +109,54 @@ library(ggplot2)
 library(corrplot)
 ```
 
-
 ```{r}
-# Data cleaning (Separate date into year and month)
-HouseSales$year_sold <- as.integer(substring(HouseSales$date, 1, 4))
-HouseSales$month_sold <- as.integer(substring(HouseSales$date, 5, 6))
-HouseSales$date <-NULL
-# Data cleaning (price to numeric)
-HouseSales$price<-parse_number(HouseSales$price)
+str(HouseSales)
 ```
 
+```{r}
+# Data cleaning (price)
+df = read.csv("KC_House_Sales.csv")
+df$price = parse_number(df$price)
+```
 
 ```{r}
-cor_matrix = round(cor(HouseSales), 3)
+# Transformation (date)
+df$year = as.integer(substr(df$date, 1, 4))
+df$month = as.integer(substr(df$date, 5, 6))
+df = subset(df, select = -c(id, date))
+```
+
+```{r}
+# dummy (month, True(1), False(0))
+df$month_Jan = ifelse(df$month == 1, 1, 0)
+df$month_Feb = ifelse(df$month == 2, 1, 0)
+df$month_Mar = ifelse(df$month == 3, 1, 0)
+df$month_Apr = ifelse(df$month == 4, 1, 0)
+df$month_May = ifelse(df$month == 5, 1, 0)
+df$month_Jun = ifelse(df$month == 6, 1, 0)
+df$month_Jul = ifelse(df$month == 7, 1, 0)
+df$month_Aug = ifelse(df$month == 8, 1, 0)
+df$month_Sep = ifelse(df$month == 9, 1, 0)
+df$month_Oct = ifelse(df$month == 10, 1, 0)
+df$month_Nov = ifelse(df$month == 11, 1, 0)
+df$month_Dec = ifelse(df$month == 12, 1, 0)
+
+df = subset(df, select = -(month))
+```
+
+```{r}
+# dummy (zipcode, Divided into two groups, 980xx and 981xx）
+df$zipcode_start = as.integer(substr(df$zipcode, 1, 3))
+df = subset(df, select = -(zipcode))
+
+summary(df)
+```
+
+```{r}
+cor_matrix = round(cor(df), 2)
 cor_matrix
 ```
+
 ```{r}
 corrplot(cor_matrix, method = "circle")
 ```
