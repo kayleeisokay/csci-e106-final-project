@@ -147,7 +147,6 @@ kc.house.df <- dplyr::select(HouseSales, -drop.vars)
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
 ```
 
-
 ```{r section3b}
 #Feature Ideas
 #Quality Adjusted Features
@@ -171,14 +170,39 @@ transform_sqft_adj_waterfront <- function(kc.house.df){
   
   return (sqft_adj_waterfront)
 }
+
+transform_poly_sqft_living <- function(kc.house.df){
+  #Center variables for polynomial terms
+  sqft_living <- (kc.house.df$sqft_living - mean(kc.house.df$sqft_living)) 
+  sqft_living_squared <- sqft_living^2
+  
+  return (list(center = sqft_living, squared = sqft_living_squared))
+}
+
+transform_poly_floor <- function(kc.house.df){
+  floors <- (kc.house.df$floors - mean(kc.house.df$floors)) 
+  floors_squared <- floors^2
+  
+  return(list(center = floors, squared = floors_squared))
+}
 ```
+
+Centering the variables do not change the interpretation of the coefficients. However they do change the interpretation of the intercept. Instead of the intercept being read as the value of price when all variables are zero. It is not read as price when all variables are zero, `floors` is equal to its average and `sqft_living` is equal to its average.
 
 ```{r section3c}
 #Apply transformations 
 
 kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
 kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
-kc.house.df$sqft_adj_waterfront<- transform_sqft_adj_waterfront(kc.house.df)
+kc.house.df$sqft_adj_waterfront <- transform_sqft_adj_waterfront(kc.house.df)
+
+res <- transform_poly_sqft_living(kc.house.df)
+kc.house.df$sqft_living <- res$center
+kc.house.df$sqft_living_squared <- res$squared
+
+res <- transform_poly_floor(kc.house.df)
+kc.house.df$floors <- res$center
+kc.house.df$floors_squared <- res$squared
 
 #Remove collinear variables
 # sqft_basement + sqft_above = sqft_living
@@ -376,6 +400,50 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 
 *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
 
+1. KS test on predictions
+- compare current model predictions on previous week's model, if ks test is significant alert slack
+- checks distribution of predictions
+2. Adjusted R2 over time
+- keep a running record of adjusted r squared, make sure it doesn't drop below baseline model, if so send a slack alert
+- Assume daily runs
+3. Quality checks on incoming data
+- t-test on means
+- chi square test on variances
+- diagnostics on influential points (no action needed just dashboard)
+- distribution of the features have to be normal (shapiro-wilk test)
+3. Model Checks
+- hetereoskedasticity test - less important because doesn't affect predictions
+- MC - less important because doesn't affect predictions
+4. Pipeline faults
+- default to old data (only need to write this out)
+5. Training data sampling
+- use multiple folds
+
+Technical points
+- Store models in rds files
+
+Scoping
+- Assume curr model is model trained on all data
+- previous model is model trained on all data minus the most recent month
+   - because of data leakage 70% of data will be 2014 and rest will be 2015
+- KS test plot
+- Create 7 different training sets, plot adjusted squared over month 1, 2, ..
+- Function to check data quality (pick the previous day's training data)
+  - t-test
+  - chisquare
+  - can tune to see which lookback window is optimal because seasonal data naturally drifts, as long as model accounts we are ok
+  
+```{r section7}
+previous.model <- NULL
+current.model <- NULL
+
+previous.pred <- predict(previous.model)
+curr.pred <- predict(current.model)
+
+# H0: same distribution
+# H1: not the same distribution
+ks.test(previous.pred, curr.pred)
+```
 
 \newpage
 ## VIII. Conclusion (5 points)
@@ -385,6 +453,10 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 ## Bibliography (7 points)
 
 *Please include all references, articles and papers in this section.*
+
+1. McGill University
+
+- http://www.med.mcgill.ca/epidemiology/joseph/courses/EPIB-621/centered_var.pdf
 
 ## Appendix (3 points)
 
