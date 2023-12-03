@@ -15,11 +15,11 @@ abstract: |
 date: "`r format(Sys.time(), '%d %B %Y')`"
 geometry: margin=1.3cm
 output:
-  html_document:
-    df_print: paged
   pdf_document:
     toc: yes
     toc_depth: 2
+  html_document:
+    df_print: paged
 editor_options: 
   markdown: 
     wrap: 72
@@ -225,7 +225,7 @@ kc.house.test.y <- kc.house.df [-index, response]
 
 ```{r}
 #baseline model
-baseline.model <- lm(price ~ . , data = cbind(price = kc.house.train.y, kc.house.train.X))
+baseline.model <- lm(price ~ ., data = cbind(price = kc.house.train.y, kc.house.train.X))
 summary(baseline.model)
 ```
 
@@ -278,7 +278,7 @@ cbind(CalcTestMetrics(pred, act, n, p))
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
-```{r}
+```{r eval=FALSE}
 # Load libraries
 library(caret)
 library(rpart)
@@ -400,50 +400,273 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 
 *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
 
-1. KS test on predictions
-- compare current model predictions on previous week's model, if ks test is significant alert slack
-- checks distribution of predictions
-2. Adjusted R2 over time
-- keep a running record of adjusted r squared, make sure it doesn't drop below baseline model, if so send a slack alert
-- Assume daily runs
-3. Quality checks on incoming data
-- t-test on means
-- chi square test on variances
-- diagnostics on influential points (no action needed just dashboard)
-- distribution of the features have to be normal (shapiro-wilk test)
-3. Model Checks
-- hetereoskedasticity test - less important because doesn't affect predictions
-- MC - less important because doesn't affect predictions
-4. Pipeline faults
-- default to old data (only need to write this out)
-5. Training data sampling
-- use multiple folds
+### To Be Ripped Out
 
-Technical points
-- Store models in rds files
-
-Scoping
-- Assume curr model is model trained on all data
-- previous model is model trained on all data minus the most recent month
-   - because of data leakage 70% of data will be 2014 and rest will be 2015
-- KS test plot
-- Create 7 different training sets, plot adjusted squared over month 1, 2, ..
-- Function to check data quality (pick the previous day's training data)
-  - t-test
-  - chisquare
-  - can tune to see which lookback window is optimal because seasonal data naturally drifts, as long as model accounts we are ok
+As a team we need to decide how to create a train/test split because their might be data leakage. Cutting the threshold by year, 2014 gets put into training and 2015 into test gets the sample sizes pretty close.
   
-```{r section7}
-previous.model <- NULL
-current.model <- NULL
+```{r}
+# Find Cutoff point
+yyyymm <- kc.house.df$year_sold*100 + kc.house.df$month_sold
 
-previous.pred <- predict(previous.model)
-curr.pred <- predict(current.model)
+sum(yyyymm < 201501) / nrow(kc.house.df)
+sum(yyyymm < 201502) / nrow(kc.house.df)
 
-# H0: same distribution
-# H1: not the same distribution
-ks.test(previous.pred, curr.pred)
+# It's a toss up which cutoff since none are exactly 70%
+# We'll use 201501 as the cutoff since it's the easier
+concat_date <- kc.house.df$year_sold*100 + kc.house.df$month_sold
+kc.house.df$yyyymm <- concat_date
 ```
+
+### Overview
+
+For model monitoring there are four areas to keep track of model stability, prediction performance, incremental data quality checks and pipeline fail safes. 
+
+### 1. Model Stability
+
+This section concerns itself with stability of predictions. Price predictions often are used by loan originators or for some consumer product. If customers get wild loan offerings or sale price recommendations month to month, it'll be a bad user experience, creating distrust between the customer and the firm. 
+
+To check for model stability the approach is to store last month's prediction values in a database table and the model itself in an S3 bucket as an RDS file. We are also assuming that we get data in monthly batches, as that is the frequency of our data set.
+
+```{r section7helperfunction}
+adjust_months <- function(date, num_months) {
+  # Convert to character for easier manipulation
+  date_str <- as.character(date)
+  
+  # Extract year and month components
+  year <- substr(date_str, 1, 4)
+  month <- substr(date_str, 5, 6)
+  
+  # Convert to numeric and adjust months
+  result_month <- as.numeric(month) + num_months
+  result_year <- as.numeric(year) + floor((result_month - 1) / 12)
+  result_month <- (result_month - 1) %% 12 + 1  # Ensure the month is within 1 to 12
+  
+  # Create the result as "yyyymm"
+  result <- paste0(result_year, sprintf("%02d", result_month))
+  
+  return(result)
+}
+```
+
+Since we do not have infrastructure stood up we use this code block to simulate pulling in previous month's model and model predictions.
+
+```{r section7previousmodel}
+set.seed(1023)
+
+lookback.window <- 12 #one year lookback
+cutoff_date <- 201501
+train_start <- adjust_months(cutoff_date, -lookback.window)
+
+prev_train_data <- kc.house.df[
+  which(
+    kc.house.df$yyyymm < cutoff_date &
+    kc.house.df$yyyymm >= train_start
+  ), 
+]
+
+horizon <- 1
+test_start <- cutoff_date
+test_end <- adjust_months(test_start, horizon)
+
+prev_test_data <- kc.house.df[
+  which(
+    (kc.house.df$yyyymm < test_end) &
+    (kc.house.df$yyyymm >= test_start) 
+    
+  ), 
+]
+previous.model <- lm(price ~ . -year_sold -month_sold, data = prev_train_data)
+previous.pred <- predict(previous.model, prev_test_data)
+```
+
+Now we simulate getting a new batch of data and fitting the model on new data. We compare the new model predictions with the old model using 
+
+1. T-test on the means of the predictions
+2. F-test for the variance of the predictions
+3. T-test on the squared error. 
+
+The last test is a Anderson-Darling test to check normality of predictions. Shapiro-Wilk test will not work for these large sample
+
+In practice, model stability tests tend to be overly sensitive so we will trigger Slack warnings when the p-values of the test are less than 0.01. 
+
+```{r}
+library(nortest)
+
+#Current Model
+cutoff_date <- adjust_months(cutoff_date, 1)
+train_start <- adjust_months(cutoff_date, -lookback.window)
+
+curr_train_data <- kc.house.df[
+  which(
+    kc.house.df$yyyymm < cutoff_date &
+    kc.house.df$yyyymm >= train_start
+  ), 
+]
+
+horizon <- 1
+test_start <- cutoff_date
+test_end <- adjust_months(test_start, horizon)
+
+curr_test_data <- kc.house.df[
+  which(
+    (kc.house.df$yyyymm < test_end) &
+    (kc.house.df$yyyymm >= test_start) 
+    
+  ), 
+]
+current.model <- lm(price ~ . -year_sold -month_sold, data = curr_train_data)
+curr.pred <- predict(current.model, curr_test_data)
+
+# H0: same means
+# H1: means are not the same
+t.test(previous.pred, curr.pred)
+
+# H0: same variance
+# H1: variance are not the same
+var.test(previous.pred, curr.pred)
+
+#Check if mean squared error is equivalent
+prev_sq_error <- (prev_test_data[, "price"] - previous.pred)^2
+curr_sq_error <- (curr_test_data[, "price"] - curr.pred)^2
+t.test(prev_sq_error, curr_sq_error)
+
+#Check predictions are normal
+ad.test(current.model$residuals)
+```
+
+Looks like in our case, the tests will trigger and warn us that the mean predictions have deviated, variances have not, MSE has not and the residuals are triggered as not normal. Means of predictions deviating doesn't warrant much of a concern but still worth notifying because that way consumers and downstream stakeholders can be informed about the current month's prediction. 
+
+The most important of these is MSE as we do not want our model to fluctuate in terms of error. Normality is important in the world of inference, especially if model coefficients become part of a product. However right now we are only concerned with predictive power.
+
+### 2. Prediction Performance over Time
+
+For this section we track key model metrics over time to ensure there aren't any anomalies that occur with the model. Metrics we choose are adjusted $R^2$ and RMSE. We apply a function to create a rolling window for the model to train on and then test with data outside the window. We collect the metrics and plot them over time. 
+
+If any metrics fall below the baseline production model, we will trigger a slack message.
+
+```{r}
+#Iterate over folds
+roll_model <- function(cutoff_dates){
+  
+  metrics <- list()
+  
+  for (cutoff_date in cutoff_dates){
+    lookback.window <- 6 #one year lookback
+    train_start <- adjust_months(cutoff_date, -lookback.window)
+    
+    train_data <- kc.house.df[
+      which(
+        kc.house.df$yyyymm < cutoff_date &
+        kc.house.df$yyyymm >= train_start
+      ), 
+    ]
+    
+    horizon <- 1
+    test_start <- cutoff_date
+    test_end <- adjust_months(test_start, horizon)
+    
+    test_data <- kc.house.df[
+      which(
+        (kc.house.df$yyyymm < test_end) &
+        (kc.house.df$yyyymm >= test_start) 
+        
+      ), 
+    ]
+    model <- lm(price ~ . -year_sold -month_sold, data = train_data)
+    pred <- predict(model, test_data)
+    
+    act <- test_data[, "price"]
+    n <- dim(model.matrix(model))[1]
+    p <- dim(model.matrix(model))[2]
+    
+    metric <- CalcTestMetrics(pred, act, n, p)
+    metrics <- c(metrics, metric)
+  }
+  
+  return (metrics)
+}
+
+years <- c(201408, 201409, 201410, 201411, 201412, 201501, 201502, 201503)
+metrics_table <- do.call(rbind, lapply(years, roll_model))
+metrics_table <- as.data.frame(metrics_table)
+metrics_table$years <- years
+metrics_table$rmse <- sqrt(as.numeric(metrics_table$mse))
+
+# Convert date to Date class
+metrics_table$date <- as.Date(paste0(metrics_table$years, "01"), format = "%Y%m%d")
+
+# Create the ggplot
+ggplot(metrics_table, aes(x = date, y = as.numeric(adj.rsquared))) +
+  geom_point(color = 'blue') +
+  labs(x = "Year-Month", y = "Adjusted R Squared", title = "Adjusted R Squared over Months") +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 month") +
+  theme_minimal()
+
+ggplot(metrics_table, aes(x = date, y = as.numeric(rmse))) +
+  geom_point(color = 'blue') +
+  labs(x = "Year-Month", y = "RMSE", title = "RMSE over Months") +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 month") +
+  theme_minimal()
+```
+
+### 3. Incremental Data Quality Check
+
+When new data comes in at monthly interval we will perform checks on it to ensure that it will not cause the model problems. The first we do is create graphs to add to the dashboard for visual inspection. These are the Residuals vs Leverage plot to detect outliers, leverage points or both and the Cook's Distance chart to detect influential points. The hope is to catch problematic points here before they reach the model.
+
+```{r}
+library(olsrr)
+incremental_data <- curr_test_data
+incremental.model <- lm(price ~ . -year_sold -month_sold, data = incremental_data)
+
+#Residual vs Leverage
+ols_plot_resid_lev(incremental.model)
+#Cook's Distance Visualized
+ols_plot_cooksd_chart(incremental.model)
+```
+
+To compare the old data with the new incremental data batch we perform a Kolmogorov–Smirnov test for continuous features and Chi-Square Goodness of Fit test for categorical data. The threshold we set will be a conservative 0.01 as these tests tend to be overly sensitive in practice because real data is extremely variable.
+
+Lastly, a performance optimization that we can do is to pre-compute the values for the old data because we do not want to pull in all historical data and run calculations over and over again. 
+
+```{r}
+old_data <- curr_train_data
+
+continuous_features <- c("price", "sqft_living", "sqft_lot", "sqft_above", "year_built", "yr_renovated", "sqft_living15", "sqft_lot15")
+discrete_features <- c("bedrooms", "bathrooms", "floors", "waterfront", "view", "condition", "grade", "zipcode")
+
+ks_pvalues <- c()
+for (feature in continuous_features){
+  pval <- ks.test(old_data[, feature], incremental_data[, feature], simulate.p.value = TRUE)$p.value
+  ks_pvalues <- c(ks_pvalues, pval)
+}
+
+chisq_pvalues <- c()
+for (feature in discrete_features){
+  # Extract the column data
+  old_feature_data <- old_data[[feature]]
+  expected_probabilities <- table(old_feature_data) / length(old_feature_data)
+  
+  incremental_feature_data <- incremental_data[[feature]]
+  observed_probabilities <- table(old_feature_data) / length(incremental_feature_data)
+  
+  #want to compare new to old
+  pval <- chisq.test(observed_probabilities, expected_probabilities, simulate.p.value = TRUE)$p.value
+  chisq_pvalues <- c(chisq_pvalues, pval)
+}
+
+cbind(continuous_features, ks_pvalues)
+cbind(discrete_features, chisq_pvalues)
+```
+
+Looks like `price`, `bedrooms`, `bathrooms` and `zipcode` deviated in our incremental data batch.
+
+### 4. Pipeline Fail Safes
+
+*Note: No examples are shown here because we do not have data infrastructure*
+
+The plan to handle pipeline failures is to persist every production model and every test and training set of data. Models will be stored in an S3 bucket. The data sets will be stored as compressed parquet files because database tables usually only contain the most updated version (upserted records) and in this case we want to use old data. When the pipeline fails, we can use old data and the old model to continue to generate predictions. This ensures downstream stakeholders are free from breaking changes.
+
+![Model Monitoring Architecture](img/model_monitoring.png)
 
 \newpage
 ## VIII. Conclusion (5 points)
