@@ -180,9 +180,9 @@ set.seed(1023)
 
 response <- "price"
 
-#Dropping variables as specified
-drop.vars <- c("id", "lat", "long")
-kc.house.df <- dplyr::select(HouseSales, -drop.vars) 
+#Dropping variables as specified (id was dropped previously)
+drop.vars <- c("lat", "long")
+kc.house.df <- dplyr::select(df, -drop.vars) 
 
 #Renaming to conform to unified convention
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
@@ -258,9 +258,9 @@ summary(baseline.model)
 3. Normality plots
 
 TODO: The following code needs to be updated once we have the updated models from stepwise feature selection.
-```{r}
-#evaluate on test data
+```{r part IV - Fitting the baseline model on the test set}
 
+#Function to generate model performance
 CalcTestMetrics <- function(pred, act, n, p) {
   SST <- var(act)*(length(act)-1)
   SSE <- sum((act-pred)^2)
@@ -281,13 +281,182 @@ CalcTestMetrics <- function(pred, act, n, p) {
   )
 }
 
+# Using the function to calculate performance of the baseline model on the test set
 pred <- predict(baseline.model, kc.house.test.X)
 act <- kc.house.test.y
 n <- dim(model.matrix(baseline.model)[, -1])[1]
 p <- dim(model.matrix(baseline.model)[, -1])[2]
 
-cbind(CalcTestMetrics(pred, act, n, p))
+performance_baseline = cbind(CalcTestMetrics(pred, act, n, p))
+performance_baseline
 ```
+
+
+```{r part IV - Stepwise both ways}
+library(olsrr)
+stepwise_model = ols_step_both_p(baseline.model, pent=0.35, prem=0.05)
+stepwise_final = stepwise_model$model
+summary(stepwise_final)
+```
+Stepwise didn't give us anything more in terms of prediction, but reduced the varibles as intended. Following, I`ll identify which variables were selected (and create a new dataframe to which we will use in our next interactions) and identify the ones dropped.
+```{r part IV -Identifying selected and eliminated variables}
+#Generating new dataframes with only the selected variables
+selected_variables = names(coef(stepwise_final))
+selected_variables = setdiff(selected_variables, "(Intercept)")
+selected_train_df = kc.house.train.X[, selected_variables]
+selected_test_df = kc.house.test.X[, selected_variables]
+
+#Finding out which ones were dropped
+original_predictors = names(kc.house.train.X)
+dropped_variables = setdiff(original_predictors, selected_variables)
+
+dropped_variables
+```
+Seems like we dropped 12 variables from our original 31. Of those 12, 10 were dummy month variables we generated, and sqft_lot and sqft_above.
+
+```{r part IV - Checking multicollinearity with VIF}
+#Fitting a new linear model with selected variables
+selected_linear_model = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
+
+pred_selected <- predict(selected_linear_model, selected_test_df)
+act_selected <- kc.house.test.y
+n_selected <- dim(model.matrix(selected_linear_model)[, -1])[1]
+p_selected <- dim(model.matrix(selected_linear_model)[, -1])[2]
+
+performance_selected = cbind(CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected))
+print(performance_selected)
+
+
+#Checking performance on the test set
+library(car)
+vif_values = vif(selected_linear_model)
+variable_names <- names(vif_values)
+vif_values <- as.numeric(vif_values)
+
+# Create a data frame with variable names and VIF values
+vif_results <- data.frame(Variable = variable_names, VIF = vif_values)
+
+# Print the VIF results
+print(vif_results)
+```
+We got 4 variables above our cutoff 10 Vif value: sqft_living, grade, sqft_adj_grade and sqft_adj_condition.I don't think they add much to interpretability, so I'm excluding them for now (maybe returning them when we use other remedial measures, like ridge regression)
+
+```{r part IV - Checking assumptions}
+# First we eliminate the variables with high multicollinearity we just found out and fit a new linear model
+#VIF_eliminated = c("sqft_adj_grade", "sqft_adj_condition")
+#selected_train_df = selected_train_df[, !names(selected_train_df) %in% VIF_eliminated]
+#selected_test_df = selected_test_df[, !names(selected_test_df) %in% VIF_eliminated]
+
+#selected_linear_model = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
+
+#pred_selected <- predict(selected_linear_model, selected_test_df)
+#act_selected <- kc.house.test.y
+#n_selected <- dim(model.matrix(selected_linear_model)[, -1])[1]
+#p_selected <- dim(model.matrix(selected_linear_model)[, -1])[2]
+
+#performance_selected = cbind(CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected))
+#print(performance_selected)
+
+plot(selected_linear_model)
+```
+```{r part IV - Applying transformantions}
+library(MASS)
+boxcox(selected_linear_model,lambda=seq(0,0.2,0.01))
+transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
+summary(transformed_model)
+plot(transformed_model)
+```
+After transforming the model (log of the price), the assumptions seem to be fine. Just to be sure on normality, let's do some tests.
+
+```{r part IV - Normality tests}
+library(lmtest)
+bptest(transformed_model)
+```
+Breush Pagan Test:\newline
+$H_0$: Error variances are constant
+$H_a$: Error variances are not constant
+
+As well, P-value of test is 2.2e-16 which is below our alpha of 0.05 , confirming that we should reject $H_0$. Variances are not constant, so normality is still an issue, specifically in the extremes.
+
+```{r part IV - Performance of transformed model}
+y_test = log(kc.house.test.y)
+
+pred_transformed = predict(transformed_model, selected_test_df)
+act_transformed <- y_test
+n_transformed <- dim(model.matrix(transformed_model)[, -1])[1]
+p_transformed <- dim(model.matrix(transformed_model)[, -1])[2]
+
+performance_transformed = cbind(CalcTestMetrics(pred_transformed, act_transformed, n_transformed, p_transformed))
+print(performance_transformed)
+```
+```{r problem IV - Ridge regression}
+library(glmnet)
+
+x= data.matrix(selected_train_df)
+y= log(kc.house.train.y)
+
+ridge_model = cv.glmnet(x,y,alpha=0, nlambda=100,lambda.min.ratio=0.0001)
+best_lambda_ridge = ridge_model$lambda.min
+
+pred_ridge = predict(ridge_model, s = best_lambda_ridge, 
+                 newx = data.matrix(selected_test_df))[,1]
+act_ridge <- y_test
+n_ridge <- dim(model.matrix(transformed_model)[, -1])[1]
+p_ridge <- dim(model.matrix(transformed_model)[, -1])[2]
+
+performance_ridge = cbind(CalcTestMetrics(pred_ridge, act_ridge, n_ridge, p_ridge))
+print(performance_ridge)
+
+```
+
+
+
+```{r problem IV - Lasso regression}
+library(glmnet)
+lasso_model = cv.glmnet(x,y,alpha=1, nlambda=100,lambda.min.ratio=0.0001)
+best_lambda_lasso = lasso_model$lambda.min
+
+pred_lasso = predict(lasso_model, s = best_lambda_lasso, 
+                 newx = data.matrix(selected_test_df))[,1]
+act_lasso <- y_test
+n_lasso <- dim(model.matrix(transformed_model)[, -1])[1]
+p_lasso <- dim(model.matrix(transformed_model)[, -1])[2]
+
+performance_lasso = cbind(CalcTestMetrics(pred_lasso, act_lasso, n_lasso, p_lasso))
+print(performance_lasso)
+
+```
+
+```{r problem IV - Elastic net regression}
+enet_model = cv.glmnet(x,y,alpha=0.5, nlambda=100,lambda.min.ratio=0.0001)
+best_lambda_enet = enet_model$lambda.min
+
+pred_enet = predict(enet_model, s = best_lambda_enet, 
+                 newx = data.matrix(selected_test_df))[,1]
+act_enet <- y_test
+n_enet <- dim(model.matrix(transformed_model)[, -1])[1]
+p_enet <- dim(model.matrix(transformed_model)[, -1])[2]
+
+performance_enet = cbind(CalcTestMetrics(pred_enet, act_enet, n_enet, p_enet))
+print(performance_enet)
+
+```
+
+```{r problem IV - Robust regression}
+robust_model = rlm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df), psi = psi.huber)
+summary(robust_model)
+
+pred_robust = predict(robust_model, selected_test_df)
+act_robust <- y_test
+n_robust <- dim(model.matrix(robust_model)[, -1])[1]
+p_robust <- dim(model.matrix(robust_model)[, -1])[2]
+
+performance_robust = cbind(CalcTestMetrics(pred_robust, act_robust, n_robust, p_robust))
+print(performance_robust)
+
+```
+With robust performance, it does not seem that outliers matter much (after trasnformation at least)
+
 
 
 \newpage
@@ -295,7 +464,7 @@ cbind(CalcTestMetrics(pred, act, n, p))
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Load libraries
 library(caret)
 library(rpart)
