@@ -180,9 +180,9 @@ set.seed(1023)
 
 response <- "price"
 
-#Dropping variables as specified
-drop.vars <- c("id", "lat", "long")
-kc.house.df <- dplyr::select(HouseSales, -drop.vars) 
+#Dropping variables as specified (id was dropped previously)
+drop.vars <- c("lat", "long")
+kc.house.df <- dplyr::select(df, -drop.vars) 
 
 #Renaming to conform to unified convention
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
