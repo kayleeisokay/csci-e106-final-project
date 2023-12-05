@@ -2327,24 +2327,6 @@ between the customer and the firm.</p>
 month’s prediction values in a database table and the model itself in an
 S3 bucket as an RDS file. We are assuming new data arrives in monthly
 batches because that is the frequency of our data set.</p>
-<pre class="r"><code>adjust_months &lt;- function(date, num_months) {
-  # Convert to character for easier manipulation
-  date_str &lt;- as.character(date)
-  
-  # Extract year and month components
-  year &lt;- substr(date_str, 1, 4)
-  month &lt;- substr(date_str, 5, 6)
-  
-  # Convert to numeric and adjust months
-  result_month &lt;- as.numeric(month) + num_months
-  result_year &lt;- as.numeric(year) + floor((result_month - 1) / 12)
-  result_month &lt;- (result_month - 1) %% 12 + 1  # Ensure the month is within 1 to 12
-  
-  # Create the result as &quot;yyyymm&quot;
-  result &lt;- paste0(result_year, sprintf(&quot;%02d&quot;, result_month))
-  
-  return(result)
-}</code></pre>
 <p>Since we do not have infrastructure stood up we use the following
 code block to simulate pulling in previous month’s model and
 corresponding predictions. We sample the data using a sliding window

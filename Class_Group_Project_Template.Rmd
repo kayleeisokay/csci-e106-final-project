@@ -15,11 +15,11 @@ abstract: |
 date: "`r format(Sys.time(), '%d %B %Y')`"
 geometry: margin=1.3cm
 output:
+  html_document:
+    df_print: paged
   pdf_document:
     toc: yes
     toc_depth: 2
-  html_document:
-    df_print: paged
 editor_options: 
   markdown: 
     wrap: 72
@@ -410,7 +410,7 @@ This subsection concerns itself with stability of predictions. Price predictions
 
 To check for prediction stability the approach is to store last month's prediction values in a database table and the model itself in an S3 bucket as an RDS file. We are assuming new data arrives in monthly batches because that is the frequency of our data set.
 
-```{r section7helperfunction}
+```{r echo = FALSE, section7helperfunction}
 adjust_months <- function(date, num_months) {
   # Convert to character for easier manipulation
   date_str <- as.character(date)
