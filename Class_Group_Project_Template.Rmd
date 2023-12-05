@@ -410,7 +410,7 @@ This subsection concerns itself with stability of predictions. Price predictions
 
 To check for prediction stability the approach is to store last month's prediction values in a database table and the model itself in an S3 bucket as an RDS file. We are assuming new data arrives in monthly batches because that is the frequency of our data set.
 
-```{r section7helperfunction echo=False}
+```{r section7helperfunction}
 adjust_months <- function(date, num_months) {
   # Convert to character for easier manipulation
   date_str <- as.character(date)
@@ -434,6 +434,9 @@ adjust_months <- function(date, num_months) {
 Since we do not have infrastructure stood up we use the following code block to simulate pulling in previous month's model and corresponding predictions. We sample the data using a sliding window approach. The past 12 months of data are used to train the model and the subsequent month is the test set. This different from the world in previous parts because here we are simulating the arrival of new data.
 
 ```{r section7previousmodel}
+concat_date <- kc.house.df$year_sold*100 + kc.house.df$month_sold
+kc.house.df$yyyymm <- concat_date
+
 set.seed(1023)
 
 lookback.window <- 12 #one year lookback window
@@ -460,10 +463,10 @@ prev_test_data <- kc.house.df[
   which(
     (kc.house.df$yyyymm < test_end) &
     (kc.house.df$yyyymm >= test_start) 
-    
   ), 
 ]
-previous.model <- lm(price ~ . -year_sold -month_sold, data = prev_train_data)
+
+previous.model <- lm(price ~ . -year_sold -month_sold - yyyymm, data = prev_train_data)
 previous.pred <- predict(previous.model, prev_test_data)
 ```
 
