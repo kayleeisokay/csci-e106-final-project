@@ -122,6 +122,10 @@ df$price = parse_number(df$price)
 # Transformation (date)
 df$year = as.integer(substr(df$date, 1, 4))
 df$month = as.integer(substr(df$date, 5, 6))
+
+year = df$year
+month = df$month
+
 df = subset(df, select = -c(id, date))
 ```
 
@@ -144,7 +148,7 @@ df = subset(df, select = -(month))
 ```
 
 ```{r}
-# dummy (zipcode, Divided into two groups, 980xx and 981xx）
+# dummy (zipcode, Divided into two groups, 980xx and 981xx)
 df$zipcode_start = as.integer(substr(df$zipcode, 1, 3))
 df = subset(df, select = -(zipcode))
 
@@ -188,7 +192,6 @@ kc.house.df <- dplyr::select(df, -drop.vars)
 kc.house.df <- kc.house.df %>% rename("year_built" = "yr_built")
 ```
 
-
 ```{r section3b}
 #Feature Ideas
 #Quality Adjusted Features
@@ -212,14 +215,39 @@ transform_sqft_adj_waterfront <- function(kc.house.df){
   
   return (sqft_adj_waterfront)
 }
+
+transform_poly_sqft_living <- function(kc.house.df){
+  #Center variables for polynomial terms
+  sqft_living <- (kc.house.df$sqft_living - mean(kc.house.df$sqft_living)) 
+  sqft_living_squared <- sqft_living^2
+  
+  return (list(center = sqft_living, squared = sqft_living_squared))
+}
+
+transform_poly_floor <- function(kc.house.df){
+  floors <- (kc.house.df$floors - mean(kc.house.df$floors)) 
+  floors_squared <- floors^2
+  
+  return(list(center = floors, squared = floors_squared))
+}
 ```
+
+Centering the variables do not change the interpretation of the coefficients. However they do change the interpretation of the intercept. Instead of the intercept being read as the value of price when all variables are zero. It is not read as price when all variables are zero, `floors` is equal to its average and `sqft_living` is equal to its average.
 
 ```{r section3c}
 #Apply transformations 
 
 kc.house.df$sqft_adj_grade <- transform_sqft_adj_grade(kc.house.df)
 kc.house.df$sqft_adj_condition <- transform_sqft_adj_condition(kc.house.df)
-kc.house.df$sqft_adj_waterfront<- transform_sqft_adj_waterfront(kc.house.df)
+kc.house.df$sqft_adj_waterfront <- transform_sqft_adj_waterfront(kc.house.df)
+
+res <- transform_poly_sqft_living(kc.house.df)
+kc.house.df$sqft_living <- res$center
+kc.house.df$sqft_living_squared <- res$squared
+
+res <- transform_poly_floor(kc.house.df)
+kc.house.df$floors <- res$center
+kc.house.df$floors_squared <- res$squared
 
 #Remove collinear variables
 # sqft_basement + sqft_above = sqft_living
@@ -242,7 +270,7 @@ kc.house.test.y <- kc.house.df [-index, response]
 
 ```{r}
 #baseline model
-baseline.model <- lm(price ~ . , data = cbind(price = kc.house.train.y, kc.house.train.X))
+baseline.model <- lm(price ~ ., data = cbind(price = kc.house.train.y, kc.house.train.X))
 summary(baseline.model)
 ```
 
@@ -295,7 +323,7 @@ cbind(CalcTestMetrics(pred, act, n, p))
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
-```{r}
+```{r eval=FALSE}
 # Load libraries
 library(caret)
 library(rpart)
@@ -417,6 +445,327 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 
 *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
 
+### Overview
+
+For model monitoring there are four areas to track 1) model stability, 2) prediction performance, 3) incremental data quality and 4) data pipeline failures. 
+
+### 1. Prediction Stability
+
+This subsection concerns itself with stability of predictions. Price predictions often are used by loan originators to size a loan or as an input to a consumer product. For example, assume the product is a home price recommendation for homeowners looking to see. If the homeowners aka the customers get highly variable sale price recommendations month to month, it'll result in subpar user experience, creating distrust between the customer and the firm. 
+
+To check for prediction stability the approach is to store last month's prediction values in a database table and the model itself in an S3 bucket as an RDS file. We are assuming new data arrives in monthly batches because that is the frequency of our data set.
+
+```{r echo = FALSE, section7helperfunction}
+adjust_months <- function(date, num_months) {
+  # Convert to character for easier manipulation
+  date_str <- as.character(date)
+  
+  # Extract year and month components
+  year <- substr(date_str, 1, 4)
+  month <- substr(date_str, 5, 6)
+  
+  # Convert to numeric and adjust months
+  result_month <- as.numeric(month) + num_months
+  result_year <- as.numeric(year) + floor((result_month - 1) / 12)
+  result_month <- (result_month - 1) %% 12 + 1  # Ensure the month is within 1 to 12
+  
+  # Create the result as "yyyymm"
+  result <- paste0(result_year, sprintf("%02d", result_month))
+  result <- as.double(result)
+  
+  return(result)
+}
+```
+
+Since we do not have infrastructure stood up we use the following code block to simulate pulling in previous month's model and corresponding predictions. We sample the data using a sliding window approach. The past 12 months of data are used to train the model and the subsequent month is the test set. This different from the world in previous parts because here we are simulating the arrival of new data.
+
+```{r section7previousmodel}
+concat_date <- year*100 + month
+kc.house.df$yyyymm <- concat_date
+
+set.seed(1023)
+
+lookback.window <- 12 #one year lookback window
+#Any data before this date is in the training set
+#Any data after is in the test set
+cutoff_date <- 201501
+train_start <- adjust_months(cutoff_date, -lookback.window)
+
+prev_train_data <- kc.house.df[
+  which(
+    kc.house.df$yyyymm < cutoff_date &
+    kc.house.df$yyyymm >= train_start
+  ), 
+]
+
+#horizon is the size of the test set
+#Here one means the subsequent month, so 201501
+#If it was 2 then the test set will include [201501-201502] so forth
+horizon <- 1
+test_start <- cutoff_date
+test_end <- adjust_months(test_start, horizon)
+
+prev_test_data <- kc.house.df[
+  which(
+    (kc.house.df$yyyymm < test_end) &
+    (kc.house.df$yyyymm >= test_start) 
+  ), 
+]
+prev_train_data <- prev_train_data %>% select(-contains("Month"))
+prev_test_data <- prev_test_data %>% select(-contains("Month"))
+
+previous.model <- lm(price ~ . -year, data = prev_train_data)
+previous.pred <- predict(previous.model, prev_test_data)
+```
+
+Now we simulate getting a new batch of data and fitting the model on new data. We compare the new model predictions against the old model using 
+
+1. T-test on the means of the predictions
+  
+  - To determine if prediction means are drifting from month to month
+
+2. F-test for the variance of the predictions
+
+  - To determine if prediction variance is drifiting from month to month
+
+3. T-test on the mean squared error. 
+
+  - To determine if mean squared error is drifting from month to month
+
+For assumption checking, we use Anderson-Darling test to check normality of predictions. Shapiro-Wilk test will not work due to the large sample size.
+
+In practice, model stability tests tend to be overly sensitive so we will trigger Slack warnings when the p-values of the test are less than 0.01. 
+
+```{r}
+library(nortest)
+
+#Current Model
+cutoff_date <- adjust_months(cutoff_date, 1)
+train_start <- adjust_months(cutoff_date, -lookback.window)
+
+curr_train_data <- kc.house.df[
+  which(
+    kc.house.df$yyyymm < cutoff_date &
+    kc.house.df$yyyymm >= train_start
+  ), 
+]
+
+horizon <- 1
+test_start <- cutoff_date
+test_end <- adjust_months(test_start, horizon)
+
+curr_test_data <- kc.house.df[
+  which(
+    (kc.house.df$yyyymm < test_end) &
+    (kc.house.df$yyyymm >= test_start) 
+    
+  ), 
+]
+curr_train_data <- curr_train_data %>% select(-contains("Month"))
+curr_test_data <- curr_test_data %>% select(-contains("Month"))
+
+current.model <- lm(price ~ . -year, data = curr_train_data)
+curr.pred <- predict(current.model, curr_test_data)
+
+# H0: same means
+# H1: means are not the same
+t.test(previous.pred, curr.pred)
+
+# H0: same variance
+# H1: variance are not the same
+var.test(previous.pred, curr.pred)
+
+#Check if mean squared error is equivalent
+prev_sq_error <- (prev_test_data[, "price"] - previous.pred)^2
+curr_sq_error <- (curr_test_data[, "price"] - curr.pred)^2
+t.test(prev_sq_error, curr_sq_error)
+
+#Check predictions are normal
+ad.test(current.model$residuals)
+```
+
+Looks like in our case, the tests will trigger and warn us that the variance of the predictions have deviated (increased), means have not, MSE has not and the AD test will trigger an assumption violation alert. Variance of predictions deviating is worth notifying because we want to ensure stakeholders and customers a consistent experience. 
+
+The most important of these is MSE as we do not want our model to fluctuate in terms of error. We certainly do not want MSE to deviate downwards to significant degree (alert can adjusted to trigger when difference is negative and significant). Normality is important for inference in the case that model coefficients become part of a product. However it is not as important currently since we are only concerned with predictive power.
+
+### 2. Prediction Performance over Time
+
+For this section we track model metrics over time to ensure the model continues to be on par. Metrics we choose are adjusted $R^2$ and RMSE. We apply a function to create a rolling window for the model to train on and then test with data outside the window. We collect the metrics and plot them over time. 
+
+If any metrics fall below the baseline production model, we will trigger a slack message.
+
+```{r}
+library(ggplot2)
+
+#Iterate over folds
+roll_model <- function(cutoff_date, form){
+  
+  lookback.window <- 6 #six month lookback
+  train_start <- adjust_months(cutoff_date, -lookback.window)
+  
+  train_data <- kc.house.df[
+    which(
+      kc.house.df$yyyymm < cutoff_date &
+      kc.house.df$yyyymm >= train_start
+    ), 
+  ]
+  train_data <- train_data %>% select(-contains("Month"))
+  
+  horizon <- 1
+  test_start <- cutoff_date
+  test_end <- adjust_months(test_start, horizon)
+  
+  test_data <- kc.house.df[
+    which(
+      (kc.house.df$yyyymm < test_end) &
+      (kc.house.df$yyyymm >= test_start) 
+      
+    ), 
+  ]
+  test_data <- test_data %>% select(-contains("Month"))
+  
+  model <- lm(form, data = train_data)
+  pred <- predict(model, test_data)
+  
+  act <- test_data[, "price"]
+  n <- dim(model.matrix(model))[1]
+  p <- dim(model.matrix(model))[2]
+  
+  metric <- CalcTestMetrics(pred, act, n, p)
+
+  return (metric)
+}
+
+years <- c(201408, 201409, 201410, 201411, 201412, 201501, 201502, 201503)
+
+ols_form <- as.formula("price ~ . -year")
+metrics_table <- do.call(rbind, lapply(years, roll_model, form = ols_form))
+metrics_table <- as.data.frame(metrics_table)
+metrics_table$years <- years
+metrics_table$rmse <- sqrt(as.numeric(metrics_table$mse))
+metrics_table$model.name <- "Production Model"
+
+#assume this it the baseline model
+null_form <- as.formula("price ~ sqft_living")
+null_metrics_table <- do.call(rbind, lapply(years, roll_model, form = null_form))
+null_metrics_table <- as.data.frame(null_metrics_table)
+null_metrics_table$years <- years
+null_metrics_table$rmse <- sqrt(as.numeric(null_metrics_table$mse))
+null_metrics_table$model.name <- "Baseline Model"
+
+
+
+metrics_table <- dplyr::union(metrics_table, null_metrics_table)
+
+# Convert date to Date class
+metrics_table$date <- as.Date(paste0(metrics_table$years, "01"), format = "%Y%m%d")
+
+# Create the ggplot
+ggplot(metrics_table, aes(x = date, y = as.numeric(adj.rsquared), color = model.name)) +
+  geom_point(size = 4) + 
+  labs(x = "Year-Month", y = "Adjusted R Squared", title = "Adjusted R Squared over Months") +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 month") +
+  theme_minimal()
+
+ggplot(metrics_table, aes(x = date, y = as.numeric(rmse), color = model.name)) +
+  geom_point(size = 4) +
+  labs(x = "Year-Month", y = "RMSE", title = "RMSE over Months") +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 month") +
+  theme_minimal()
+```
+
+The `Adjusted R Squared over Months` plot will have no triggers. `RMSE over Months` will trigger on every month.
+
+### 3. Incremental Data Quality Check
+
+When new data comes in at monthly interval we will perform checks to prevent malformed data from entering the model. First we create graphs to add to a dashboard for visual inspection. These are the `Residuals vs Leverage` plot to detect outliers, leverage points or both and the `Cook's Distance` chart to detect influential points. The hope is to catch problematic points early, before they reach the model.
+
+```{r}
+library(olsrr)
+incremental_data <- curr_test_data
+incremental.model <- lm(price ~ . -year, data = incremental_data)
+
+#Residual vs Leverage
+ols_plot_resid_lev(incremental.model)
+#Cook's Distance Visualized
+ols_plot_cooksd_chart(incremental.model)
+```
+
+To compare the old data with the new incremental data batch we perform a Kolmogorov–Smirnov test for continuous features and Chi-Square Goodness of Fit test for categorical data. The threshold we set will be a conservative 0.01 because these tests tend to be overly sensitive due to the variable nature of real data.
+
+```{r}
+old_data <- curr_train_data
+
+continuous_features <- c(
+  "price", 
+  "sqft_living", 
+  "sqft_lot", 
+  "sqft_above", 
+  "year_built", 
+  "yr_renovated", 
+  "sqft_living15", 
+  "sqft_lot15"
+)
+discrete_features <- c(
+  "bedrooms", 
+  "bathrooms", 
+  "floors", 
+  "waterfront", 
+  "view", 
+  "condition", 
+  "grade", 
+  "zipcode_start"
+)
+
+#H0: Same Distribution
+#H1: Not same distribution
+ks_pvalues <- c()
+for (feature in continuous_features){
+  pval <- ks.test(
+    old_data[, feature], 
+    incremental_data[, feature], 
+    simulate.p.value = TRUE
+  )$p.value
+  
+  ks_pvalues <- c(ks_pvalues, pval)
+}
+
+#H0: Same Proportions
+#H1: Not same proportions
+chisq_pvalues <- c()
+for (feature in discrete_features){
+  # Extract the column data
+  old_feature_data <- old_data[[feature]]
+  n <- length(old_feature_data)
+  expected_probabilities <- table(old_feature_data) / n 
+  
+  incremental_feature_data <- incremental_data[[feature]]
+  n <- length(incremental_feature_data)
+  observed_probabilities <- table(old_feature_data) / n
+  
+  #want to compare new to old
+  pval <- chisq.test(
+    observed_probabilities, 
+    expected_probabilities, 
+    simulate.p.value = TRUE
+  )$p.value
+  
+  chisq_pvalues <- c(chisq_pvalues, pval)
+}
+
+cbind(continuous_features, ks_pvalues)
+cbind(discrete_features, chisq_pvalues)
+```
+
+Looks like `sqft_living`, `bedrooms`, `bathrooms` and deviated in our incremental data batch.
+
+### 4. Pipeline Fail Safes
+
+*Note: No examples are shown here because we do not have data infrastructure*
+
+The plan to handle pipeline failures is to persist every production model and every test and training set of data. It is ok to store large amounts of data because storage is cheap in the modern day. Models RDS files will be stored in an S3 bucket. The data sets will be stored as compressed parquet files because production database tables usually only contain the most updated version (upserted records) and in this case we want to revert to data before any updates were made. When the pipeline fails, we can use old data and the old model to continue to generate predictions. This ensures downstream stakeholders are free from breaking changes and free from work disruption.
+
+![Model Monitoring Architecture](img/model_monitoring.png)
 
 \newpage
 ## VIII. Conclusion (5 points)
@@ -426,6 +775,10 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 ## Bibliography (7 points)
 
 *Please include all references, articles and papers in this section.*
+
+1. McGill University
+
+- http://www.med.mcgill.ca/epidemiology/joseph/courses/EPIB-621/centered_var.pdf
 
 ## Appendix (3 points)
 
