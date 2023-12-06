@@ -122,6 +122,10 @@ df$price = parse_number(df$price)
 # Transformation (date)
 df$year = as.integer(substr(df$date, 1, 4))
 df$month = as.integer(substr(df$date, 5, 6))
+
+year = df$year
+month = df$month
+
 df = subset(df, select = -c(id, date))
 ```
 
@@ -144,7 +148,7 @@ df = subset(df, select = -(month))
 ```
 
 ```{r}
-# dummy (zipcode, Divided into two groups, 980xx and 981xx）
+# dummy (zipcode, Divided into two groups, 980xx and 981xx)
 df$zipcode_start = as.integer(substr(df$zipcode, 1, 3))
 df = subset(df, select = -(zipcode))
 
@@ -467,6 +471,7 @@ adjust_months <- function(date, num_months) {
   
   # Create the result as "yyyymm"
   result <- paste0(result_year, sprintf("%02d", result_month))
+  result <- as.double(result)
   
   return(result)
 }
@@ -475,7 +480,7 @@ adjust_months <- function(date, num_months) {
 Since we do not have infrastructure stood up we use the following code block to simulate pulling in previous month's model and corresponding predictions. We sample the data using a sliding window approach. The past 12 months of data are used to train the model and the subsequent month is the test set. This different from the world in previous parts because here we are simulating the arrival of new data.
 
 ```{r section7previousmodel}
-concat_date <- kc.house.df$year_sold*100 + kc.house.df$month_sold
+concat_date <- year*100 + month
 kc.house.df$yyyymm <- concat_date
 
 set.seed(1023)
@@ -506,8 +511,10 @@ prev_test_data <- kc.house.df[
     (kc.house.df$yyyymm >= test_start) 
   ), 
 ]
+prev_train_data <- prev_train_data %>% select(-contains("Month"))
+prev_test_data <- prev_test_data %>% select(-contains("Month"))
 
-previous.model <- lm(price ~ . -year_sold -month_sold - yyyymm, data = prev_train_data)
+previous.model <- lm(price ~ . -year, data = prev_train_data)
 previous.pred <- predict(previous.model, prev_test_data)
 ```
 
@@ -554,7 +561,10 @@ curr_test_data <- kc.house.df[
     
   ), 
 ]
-current.model <- lm(price ~ . -year_sold -month_sold, data = curr_train_data)
+curr_train_data <- curr_train_data %>% select(-contains("Month"))
+curr_test_data <- curr_test_data %>% select(-contains("Month"))
+
+current.model <- lm(price ~ . -year, data = curr_train_data)
 curr.pred <- predict(current.model, curr_test_data)
 
 # H0: same means
@@ -574,7 +584,7 @@ t.test(prev_sq_error, curr_sq_error)
 ad.test(current.model$residuals)
 ```
 
-Looks like in our case, the tests will trigger and warn us that the mean predictions have deviated (increased), variances have not, MSE has not and the AD test will trigger an assumption violation alert. Means of predictions deviating doesn't warrant much of a concern but still worth notifying to ensure consumers and downstream stakeholders can be informed about the current month's prediction. 
+Looks like in our case, the tests will trigger and warn us that the variance of the predictions have deviated (increased), means have not, MSE has not and the AD test will trigger an assumption violation alert. Variance of predictions deviating is worth notifying because we want to ensure stakeholders and customers a consistent experience. 
 
 The most important of these is MSE as we do not want our model to fluctuate in terms of error. We certainly do not want MSE to deviate downwards to significant degree (alert can adjusted to trigger when difference is negative and significant). Normality is important for inference in the case that model coefficients become part of a product. However it is not as important currently since we are only concerned with predictive power.
 
@@ -599,6 +609,7 @@ roll_model <- function(cutoff_date, form){
       kc.house.df$yyyymm >= train_start
     ), 
   ]
+  train_data <- train_data %>% select(-contains("Month"))
   
   horizon <- 1
   test_start <- cutoff_date
@@ -611,6 +622,8 @@ roll_model <- function(cutoff_date, form){
       
     ), 
   ]
+  test_data <- test_data %>% select(-contains("Month"))
+  
   model <- lm(form, data = train_data)
   pred <- predict(model, test_data)
   
@@ -625,7 +638,7 @@ roll_model <- function(cutoff_date, form){
 
 years <- c(201408, 201409, 201410, 201411, 201412, 201501, 201502, 201503)
 
-ols_form <- as.formula("price ~ . -year_sold -month_sold")
+ols_form <- as.formula("price ~ . -year")
 metrics_table <- do.call(rbind, lapply(years, roll_model, form = ols_form))
 metrics_table <- as.data.frame(metrics_table)
 metrics_table$years <- years
@@ -661,7 +674,7 @@ ggplot(metrics_table, aes(x = date, y = as.numeric(rmse), color = model.name)) +
   theme_minimal()
 ```
 
-The `Adjusted R Squared over Months` plot will have no triggers. On the contrary, `RMSE over Months` will trigger on 2014-09, 2014-11, and 2014-12. 
+The `Adjusted R Squared over Months` plot will have no triggers. `RMSE over Months` will trigger on every month.
 
 ### 3. Incremental Data Quality Check
 
@@ -670,7 +683,7 @@ When new data comes in at monthly interval we will perform checks to prevent mal
 ```{r}
 library(olsrr)
 incremental_data <- curr_test_data
-incremental.model <- lm(price ~ . -year_sold -month_sold, data = incremental_data)
+incremental.model <- lm(price ~ . -year, data = incremental_data)
 
 #Residual vs Leverage
 ols_plot_resid_lev(incremental.model)
@@ -701,9 +714,11 @@ discrete_features <- c(
   "view", 
   "condition", 
   "grade", 
-  "zipcode"
+  "zipcode_start"
 )
 
+#H0: Same Distribution
+#H1: Not same distribution
 ks_pvalues <- c()
 for (feature in continuous_features){
   pval <- ks.test(
@@ -715,6 +730,8 @@ for (feature in continuous_features){
   ks_pvalues <- c(ks_pvalues, pval)
 }
 
+#H0: Same Proportions
+#H1: Not same proportions
 chisq_pvalues <- c()
 for (feature in discrete_features){
   # Extract the column data
@@ -740,7 +757,7 @@ cbind(continuous_features, ks_pvalues)
 cbind(discrete_features, chisq_pvalues)
 ```
 
-Looks like `price`, `bedrooms`, `bathrooms` and `zipcode` deviated in our incremental data batch.
+Looks like `sqft_living`, `bedrooms`, `bathrooms` and deviated in our incremental data batch.
 
 ### 4. Pipeline Fail Safes
 
