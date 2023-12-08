@@ -124,6 +124,8 @@ df$price = parse_number(df$price)
 # Transformation (date)
 df$year = as.integer(substr(df$date, 1, 4))
 df$month = as.integer(substr(df$date, 5, 6))
+year = df$year
+month = df$month
 df = subset(df, select = -c(id, date))
 ```
 
