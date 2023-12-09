@@ -117,7 +117,7 @@ This section will describe the model usage, your conclusions and any regulatory 
 
 ```{r}
 
-# Load libraries
+# Step a: Load libraries
 library(caret)
 library(rpart)
 library(nnet)
@@ -150,6 +150,31 @@ tree_model <- rpart(price ~ ., data = train)
 printcp(tree_model)  # Display complexity parameter plot
 plot(tree_model)  # Visualize the decision tree
 
+# Model 3: Lasso Regression
+library(glmnet)
+
+# Prepare the data for Lasso regression (use your own dataset and variables)
+lasso_train_data <- train
+lasso_test_data <- test
+
+# Define the response variable
+response <- "price"
+
+# Extract predictors
+predictors <- setdiff(names(lasso_train_data), response)
+
+# Convert to matrix format
+X_train <- as.matrix(lasso_train_data[, predictors])
+y_train <- lasso_train_data[, response]
+X_test <- as.matrix(lasso_test_data[, predictors])
+
+# Fit the Lasso regression model
+lasso_model <- cv.glmnet(X_train, y_train, alpha = 1) # alpha = 1 for Lasso
+
+# Print the best lambda value chosen by cross-validation
+best_lambda <- lasso_model$lambda.min
+cat("Best Lambda for Lasso Regression:", best_lambda, "\n")
+
 # Step c: Model Evaluation
 
 # Model 1: Logistic Regression
@@ -160,14 +185,27 @@ cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
 # Model 2: Regression Tree
 tree_predictions <- predict(tree_model, newdata = test)
 tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
+tree_mae <- mean(abs(tree_predictions - test$price))
+tree_mse <- mean((tree_predictions - test$price)^2)
+
 cat("Regression Tree RMSE:", tree_rmse, "\n")
+cat("Regression Tree MAE:", tree_mae, "\n")
+cat("Regression Tree MSE:", tree_mse, "\n")
+
+Model 3: Lasso
+# Make predictions using the Lasso model
+lasso_predictions <- predict(lasso_model, s = best_lambda, newx = X_test)
+
+# Calculate metrics for the Lasso model 
+lasso_rmse <- sqrt(mean((lasso_predictions - lasso_test_data$price)^2))
+lasso_mae <- mean(abs(lasso_predictions - lasso_test_data$price))
+lasso_mse <- mean((lasso_predictions - lasso_test_data$price)^2)
+
+cat("Lasso Regression RMSE:", lasso_rmse, "\n")
+cat("Lasso Regression MAE:", lasso_mae, "\n")
+cat("Lasso Regression MSE:", lasso_mse, "\n")
 
 # Step d: Model Comparison (Choose the best model based on evaluation metrics)
-
-tree_predictions <- predict(tree_model, newdata = test)
-tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
-cat("Regression Tree RMSE:", tree_rmse, "\n")
-
 
 # Step e: Backtesting - placeholder 
 
@@ -194,8 +232,6 @@ compare_model_performance <- function(models, model_names, train, test) {
 
   # Create a table to compare model results
   kable(model_results, format = "markdown")
-}
-}
 ```
 
 \newpage
