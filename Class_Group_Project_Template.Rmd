@@ -153,7 +153,7 @@ plot(tree_model)  # Visualize the decision tree
 # Model 3: Lasso Regression
 library(glmnet)
 
-# Prepare the data for Lasso regression (use your own dataset and variables)
+# Prepare the data for Lasso regression
 lasso_train_data <- train
 lasso_test_data <- test
 
