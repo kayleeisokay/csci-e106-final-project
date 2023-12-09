@@ -150,31 +150,6 @@ tree_model <- rpart(price ~ ., data = train)
 printcp(tree_model)  # Display complexity parameter plot
 plot(tree_model)  # Visualize the decision tree
 
-# Model 3: Lasso Regression
-library(glmnet)
-
-# Prepare the data for Lasso regression
-lasso_train_data <- train
-lasso_test_data <- test
-
-# Define the response variable
-response <- "price"
-
-# Extract predictors
-predictors <- setdiff(names(lasso_train_data), response)
-
-# Convert to matrix format
-X_train <- as.matrix(lasso_train_data[, predictors])
-y_train <- lasso_train_data[, response]
-X_test <- as.matrix(lasso_test_data[, predictors])
-
-# Fit the Lasso regression model
-lasso_model <- cv.glmnet(X_train, y_train, alpha = 1) # alpha = 1 for Lasso
-
-# Print the best lambda value chosen by cross-validation
-best_lambda <- lasso_model$lambda.min
-cat("Best Lambda for Lasso Regression:", best_lambda, "\n")
-
 # Step c: Model Evaluation
 
 # Model 1: Logistic Regression
@@ -192,46 +167,6 @@ cat("Regression Tree RMSE:", tree_rmse, "\n")
 cat("Regression Tree MAE:", tree_mae, "\n")
 cat("Regression Tree MSE:", tree_mse, "\n")
 
-Model 3: Lasso
-# Make predictions using the Lasso model
-lasso_predictions <- predict(lasso_model, s = best_lambda, newx = X_test)
-
-# Calculate metrics for the Lasso model 
-lasso_rmse <- sqrt(mean((lasso_predictions - lasso_test_data$price)^2))
-lasso_mae <- mean(abs(lasso_predictions - lasso_test_data$price))
-lasso_mse <- mean((lasso_predictions - lasso_test_data$price)^2)
-
-cat("Lasso Regression RMSE:", lasso_rmse, "\n")
-cat("Lasso Regression MAE:", lasso_mae, "\n")
-cat("Lasso Regression MSE:", lasso_mse, "\n")
-
-# Step d: Model Comparison (Choose the best model based on evaluation metrics)
-
-# Step e: Backtesting - placeholder 
-
-# Function to compare model performance
-compare_model_performance <- function(models, model_names, train, test) {
-  rmse_values <- c()
-  rsquared_values <- c()
-  mape_values <- c()
-
-  for (i in 1:length(models)) {
-    model <- models[[i]]
-    predictions <- predict(model, newdata = test)
-    rmse <- sqrt(mean((test$price - predictions)^2))
-    rsquared <- cor(test$price, predictions)^2
-    mape <- mean(abs((test$price - predictions) / test$price)) * 100
-
-    rmse_values <- c(rmse_values, rmse)
-    rsquared_values <- c(rsquared_values, rsquared)
-    mape_values <- c(mape_values, mape)
-  }
-
-  # Create a data frame to hold the results
-  model_results <- data.frame(Model = model_names, RMSE = rmse_values, R_squared = rsquared_values, MAPE = mape_values)
-
-  # Create a table to compare model results
-  kable(model_results, format = "markdown")
 ```
 
 \newpage
