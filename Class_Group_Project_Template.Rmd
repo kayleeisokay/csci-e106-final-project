@@ -116,6 +116,7 @@ This section will describe the model usage, your conclusions and any regulatory 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
 ```{r}
+
 # Load libraries
 library(caret)
 library(rpart)
@@ -125,93 +126,63 @@ library(dplyr)
 library(stringr)
 library(readr)
 
-HouseSales <- read.csv('KC_House_Sales.csv')
-
-# Step a: Data Splitting
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(HouseSales), size = round(split_ratio * nrow(HouseSales)))
-train_data <- HouseSales[index, ]
-test_data <- HouseSales[-index, ]
-
 # Step b: Model Building
 
 # Model 1: Logistic Regression
 
 # Create a binary variable 'high_price' based on the chosen percentile
-logisticdf <- HouseSales
-logisticdf$price <- parse_number(logisticdf$price)
-logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
+logistic_train_data <- train
+logistic_test_data <- test
+logistic_train_data$high_price <- ifelse(logistic_train_data$price >= 1000000, 1, 0)
+logistic_test_data$high_price <- ifelse(logistic_test_data$price >= 1000000, 1, 0)
+
 
 # Create a new dataframe with 'high_price' column
-logisticdf <- logisticdf %>%
+logistic_train_data <- logistic_train_data %>%
   select(-price)
 
-# Split data for logistic regrssion model
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
-train_data_logistic <- logisticdf[index, ]
-test_data_logistic <- logisticdf[-index, ]
-
-#Build basic logistic regrssion model
-logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
+#Build basic logistic regression model
+logistic_model <- glm(high_price ~ ., data = logistic_train_data, family = binomial)
 summary(logistic_model)
 
 # Model 2: Regression Tree
-tree_model <- rpart(price ~ ., data = train_data)
+tree_model <- rpart(price ~ ., data = train)
 printcp(tree_model)  # Display complexity parameter plot
 plot(tree_model)  # Visualize the decision tree
-
-# Model 3: Neural Network
-nn_model <- neuralnet(price ~ ., data = train_data, hidden = c(5, 2), linear.output = TRUE)
-
-# Tune neural network hyperparameters - placehlder
 
 # Step c: Model Evaluation
 
 # Model 1: Logistic Regression
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
+logistic_predictions <- predict(logistic_model, newdata = logistic_test_data, type = 'response')
+logistic_accuracy <- sum((logistic_predictions > 0.5) == logistic_test_data$high_price) / length(logistic_test_data$high_price)
 cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
 
 # Model 2: Regression Tree
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+tree_predictions <- predict(tree_model, newdata = test)
+tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
 cat("Regression Tree RMSE:", tree_rmse, "\n")
-
-# Model 3: Neural Network
-nn_predictions <- predict(nn_model, newdata = test_data)
-# Calculate relevant performance metrics for the neural network model
 
 # Step d: Model Comparison (Choose the best model based on evaluation metrics)
 
-# Calculate evaluation metrics for all models
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
-cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
-
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+tree_predictions <- predict(tree_model, newdata = test)
+tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
 cat("Regression Tree RMSE:", tree_rmse, "\n")
 
-nn_predictions <- predict(nn_model, newdata = test_data)
-cat("NN RMSE:", tree_rmse, "\n")
 
 # Step e: Backtesting - placeholder 
 
 # Function to compare model performance
-compare_model_performance <- function(models, model_names, data_train, data_test) {
+compare_model_performance <- function(models, model_names, train, test) {
   rmse_values <- c()
   rsquared_values <- c()
   mape_values <- c()
 
   for (i in 1:length(models)) {
     model <- models[[i]]
-    predictions <- predict(model, newdata = data_test)
-    rmse <- sqrt(mean((data_test$price - predictions)^2))
-    rsquared <- cor(data_test$price, predictions)^2
-    mape <- mean(abs((data_test$price - predictions) / data_test$price)) * 100
+    predictions <- predict(model, newdata = test)
+    rmse <- sqrt(mean((test$price - predictions)^2))
+    rsquared <- cor(test$price, predictions)^2
+    mape <- mean(abs((test$price - predictions) / test$price)) * 100
 
     rmse_values <- c(rmse_values, rmse)
     rsquared_values <- c(rsquared_values, rsquared)
@@ -223,6 +194,7 @@ compare_model_performance <- function(models, model_names, data_train, data_test
 
   # Create a table to compare model results
   kable(model_results, format = "markdown")
+}
 }
 ```
 
