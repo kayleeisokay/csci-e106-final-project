@@ -11,6 +11,7 @@ author:
 tags: [logistic, neuronal networks, etc..]
 abstract: |
   We aimed to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Our dataset contained historical home sales prices of 21,613 houses in Kings County, USA (May 2014-May 2015), out of which we randomly sampled 70% for training and 30% for testing. We selected several significant features using feature selection methods to build the models. Seven different linear regression models were developed using R and compared against each other, with lasso regression achieving the highest adjusted R-squared (0.775). In addition, we developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
+  
   In conclusion, we proposed a model that could predict house sales prices based on commonly measured variables. We believe such a model can serve as a helpful tool for prospective consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that may increase or decrease home values. Importantly, we expect this model to be valid only within the geographical region of King County and for a limited period of time into the future. It is subject to changes in the market and broader economic conditions, thus we also provided a detailed model monitoring plan to alert us of significant deviations from our model. 
 date: "`r format(Sys.time(), '%d %B %Y')`"
 geometry: margin=1.3cm
@@ -96,9 +97,9 @@ In this report, we describe the development of a statistical model that can be u
 
 In this project, our goal is to build a statistical model that can predict house sales prices in Kings county, USA based on house sales data collected in that area between May 2014 and May 2015. The dataset contains information on 21613 houses, including the sale price, number of rooms, square footage, year built and renovated, view, and condition of the property. The house sale price was used as the outcome variable and all other variables were considered as independent variables. 70% of the dataset was randomly sampled as training set and the remaining 30% was used as testing set. 
 
-Using this framework, we built several different models using linear regression and random forest methods. First, we built a baseline OLS linear regression model using all available variables. Then we performed stepwise variable selection to ensure the inclusion of only significant variables. Diagnostic tests at this point indicated issues with normality assumption, multicollinearity, and constant variance assumption. These issues were largely resolved by a log transformation of the dependent variable as suggested by box-cox analysis. We further built models using ridge, lasso, and elastic net regression. As an additional comparison, we also built a random forest model and employed hyperparameter tuning procedures. 
+Using this framework, we built several different models using linear regression and random forest methods. First, we built a baseline OLS linear regression model using all available variables. Then we performed stepwise variable selection to ensure the inclusion of only significant variables. Diagnostic tests at this point indicated issues with normality assumption, multicollinearity, and constant variance assumption. These issues were largely resolved by a log transformation of the dependent variable as suggested by box-cox analysis. We further built models using ridge, lasso, and elastic net regression, as well as a robust regression to account for any effects of outliers. As an additional comparison, we also built a random forest model and employed hyperparameter tuning procedures. 
 
-Finally, the performance of each model was evaluated by its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our lasso regression model (adjusted R-squared = 0.775). Our top performing models indicated that the most important factors that influence house prices in King County, USA are grade, latitude, and whether the property has a waterfront view. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
+Finally, the performance of each model was evaluated by its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our lasso regression model (adjusted R-squared = 0.775). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
 
 \newpage
 ## II. Description of the data and quality (15 points)
@@ -432,6 +433,7 @@ dropped_variables = setdiff(original_predictors, selected_variables)
 
 dropped_variables
 ```
+
 Seems like we dropped 12 variables from our original 31. Of those 12, 10 were dummy month variables we generated, and sqft_lot and sqft_above.
 After this, we checked multi-collinearity with VIF analysis.
 
@@ -472,6 +474,7 @@ vif_results <- data.frame(Variable = variable_names, VIF = vif_values)
 # Print the VIF results
 print(vif_results)
 ```
+
 We got 3 variables above our cutoff 10 Vif value: sqft_living, sqft_adj_grade and sqft_adj_condition. We have compared the model performance with or without removing these variables and found that it had minimal effect. We restored them when we used other remedial measures, like ridge regression.
 
 ```{r part IV - Checking assumptions, fig.width=8}
@@ -496,6 +499,7 @@ We got 3 variables above our cutoff 10 Vif value: sqft_living, sqft_adj_grade an
 par(mfrow=c(2,2))
 plot(selected_linear_model)
 ```
+
 The diagnostic plots indicated issues with normality assumption, as there were many points especially on the higher end that deviated from expected quantiles. The scale-location plot showed violation of constant variance assumption. Overall the data seems heavily right-skewed, so we next performed box-cox analysis to check for any necessary transformations.
 
 ```{r part IV - Applying transformantions,fig.width=8}
@@ -508,6 +512,7 @@ summary(transformed_model)
 par(mfrow=c(2,2))
 plot(transformed_model)
 ```
+
 Box-cox value indicates optimal lambda at a value very close to zero. Although zero falls just outside the 95% confidence interval, for practical and interpretability reasons we chose to perform log-transformation on the dependent variable. After transforming the model (log of the price), the assumptions seem to be fine. Just to be sure on normality, let's do some tests.
 
 ```{r part IV - Normality tests}
@@ -519,6 +524,7 @@ ad.test(std_residuals)
 lillie.test(std_residuals)
 
 ```
+
 It seems like normality does not hold, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and normality tests shows that normality does not hold as well. It's up to question if this is  a huge problem, considering the size of the data set. However, non-parametric models should (and will, in the next part) be tried for better results, since some does not need those assumptions to work.
 
 ```{r part IV - Performance of transformed model}
@@ -709,6 +715,7 @@ performance_robust = CalcTestMetrics(pred_robust, act_robust, n_robust, p_robust
 print(performance_robust)
 
 ```
+
 With robust performance, it does not seem that outliers matter much (after transformation at least)
 
 ```{r problem IV - R2 table}
@@ -1258,16 +1265,22 @@ The plan to handle pipeline failures is to persist every production model and ev
 \newpage
 ## VIII. Conclusion (5 points)
 
-This project aims to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Using our training dataset, we built seven different linear regression models and compared them against each other, with lasso regression achieving the highest adjusted R-squared (0.775) and lowest MSE. In addition, we developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
+This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with lasso regression achieving the highest adjusted R-squared (0.775) and lowest MSE. We developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
 
-In conclusion, we proposed a model that could predict house sales prices based on commonly measured variables. We believe such a model can serve as a helpful tool for consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that may increase or decrease home values.
+Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 77% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
+
+Our simple linear regression analysis found that the variables with most significant p values are bathrooms, view, grade, latitude, year built, sqft_living15, year of purchase, and number of floors. All of these variables except year built is positively correlated with price. An interesting insight is that the timing of the house sale also matters, because purchases being made in January and February has a negative effect on house prices.
 
 ```{r}
-knitr::kable(dplyr::select(coeff.q1.df,-c(ElasticNetNonTrans,Baseline,Stepwise)), caption = "Model Coefficients")
+knitr::kable(sorted_results_df, caption = "Model Metrics")
+knitr::kable(dplyr::select(coeff.q1.df,-c(ElasticNetNonTrans,Baseline,Stepwise)), caption = "Model Coefficients (showing log-transformed models only")
 ```
 
-From the 
+Our random forest model also highlighted a set of variables with highest importance, which includes grade, sqft_living, sqft_above, sqft_living15, bathrooms and latitude. Both random forest and linear regression models agree that higher latitude may predict higher house prices, suggesting that perhaps some less desirable areas correspond with lower latitude. In both types of models, higher grade (quality of construction and design) and higher number of bathrooms also associates with higher house prices. In contrast, most of the square footage variables relevant to random forest did not show strong significance in the linear models. It is possible that the relationship between square footage with price are non-linear and better captured by a non-parametric model like the random forest. All the square footage-related metrics also likely run into multicollinearity issues with linear regression.
 
+In conclusion, we propose a final lasso regression model that could predict house sales prices based on commonly measured variables. We believe such a model can be a helpful tool for consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that influence home values.
+
+\newpage
 ## Bibliography (7 points)
 
 *Please include all references, articles and papers in this section.*
@@ -1307,7 +1320,7 @@ Lastly, we would like to express our sincere appreciation for the instructors an
 *Please add any additional supporting graphs, plots and data analysis.*
 
 Additional plots and details from stepwise variable selection.
-```{r}
+```{r, fig.width=7}
 stepwise_model
 plot(stepwise_model)
 ```
@@ -1318,6 +1331,7 @@ plot(glmnet(x,y,alpha=0,lambda.min.ratio=0.00001),xvar="lambda",label=T)
 abline(v=log(best_lambda_ridge), col="blue") # Indicates our lambda value
 
 ```
+
 Additional plot showing coefficients and number of variables at different lambda values for lasso regression.
 
 ```{r}
