@@ -371,12 +371,7 @@ summary(baseline.model)
 
 *Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
 
-#TODO
-1. Stepwise feature selection
-2. Add plots (e.g. scale location, residual vs fitted)
-3. Normality plots
 
-TODO: The following code needs to be updated once we have the updated models from stepwise feature selection.
 ```{r part IV - Fitting the baseline model on the test set}
 
 #Function to generate model performance
@@ -729,7 +724,11 @@ knitr::kable(sorted_results_df, caption = "Model Metrics")
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
-```{r eval=FALSE}
+Part V
+
+We first built a basic regression tree model as a baseline non-parametric challenger model; results were not particularly strong (r-squared at ~0.6, which is lower than the r-squared of the linear regression model). We then tuned hyperparameters for the decision tree using random search (using RMSE and MAE as the metrics to optimise) and backtested the model using a cross-validation resampling approach. This only improved performance very slightly (small decline in RMSE and improvement in r-squared to 0.62). Ultimately we chose this tuned model as our challenger model, as it is relatively simple to build and implement, and fairly explainable (e.g. the splits tend to be easy to understand). Analysis of residuals showed that while there was significant skewness on the left and right tails, the normality assumption broadly holds; and a 2 sided t test confirmed that there is no significant difference between actual and predicted values. More complex models e.g. deep neural networks would likely perform better, but would likely consume too many computational resources for our purposes.
+
+```{r Part V}
 # Load libraries
 library(caret)
 library(rpart)
@@ -738,106 +737,165 @@ library(knitr)
 library(dplyr)
 library(stringr)
 library(readr)
+library(kableExtra)
+library(mlr)
+library(rpart.plot)
 
-HouseSales <- read.csv('KC_House_Sales.csv')
+# Model building
 
-# Step a: Data Splitting
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(HouseSales), size = round(split_ratio * nrow(HouseSales)))
-train_data <- HouseSales[index, ]
-test_data <- HouseSales[-index, ]
+# Build basic regression tree
+tree_model <- rpart(price ~ ., data = train)
 
-# Step b: Model Building
+# Visualize the decision tree
+par(mfrow=c(1,2))  
+rpart.plot(tree_model, shadow.col = "gray", nn = TRUE)
 
-# Model 1: Logistic Regression
+# Make predictions using basic regression tree
+tree_predictions <- predict(tree_model, newdata = test)
+tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
+tree_mae <- mean(abs(tree_predictions - test$price))
+tree_mse <- mean((tree_predictions - test$price)^2)
 
-# Create a binary variable 'high_price' based on the chosen percentile
-logisticdf <- HouseSales
-logisticdf$price <- parse_number(logisticdf$price)
-logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
-
-# Create a new dataframe with 'high_price' column
-logisticdf <- logisticdf %>%
-  dplyr::select(-price)
-
-# Split data for logistic regrssion model
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
-train_data_logistic <- logisticdf[index, ]
-test_data_logistic <- logisticdf[-index, ]
-
-#Build basic logistic regrssion model
-logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
-summary(logistic_model)
-
-# Model 2: Regression Tree
-tree_model <- rpart(price ~ ., data = train_data)
-printcp(tree_model)  # Display complexity parameter plot
-plot(tree_model)  # Visualize the decision tree
-
-# Model 3: Neural Network
-nn_model <- neuralnet(price ~ ., data = train_data, hidden = c(5, 2), linear.output = TRUE)
-
-# Tune neural network hyperparameters - placehlder
-
-# Step c: Model Evaluation
-
-# Model 1: Logistic Regression
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
-cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
-
-# Model 2: Regression Tree
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+#View basic regression tree results
 cat("Regression Tree RMSE:", tree_rmse, "\n")
+cat("Regression Tree MAE:", tree_mae, "\n")
+cat("Regression Tree MSE:", tree_mse, "\n")
 
-# Model 3: Neural Network
-nn_predictions <- predict(nn_model, newdata = test_data)
-# Calculate relevant performance metrics for the neural network model
+#Tune regression tree hyperparameters to improve performance
 
-# Step d: Model Comparison (Choose the best model based on evaluation metrics)
+# Define the hyperparameter space for random search
+param_space <- makeParamSet(
+  makeNumericParam("cp", lower = 0.01, upper = 0.1),
+  makeIntegerParam("minsplit", lower = 5, upper = 10),
+  makeIntegerParam("minbucket", lower = 5, upper = 10),
+  makeIntegerParam("maxdepth", lower = 5, upper = 15),
+  makeIntegerParam("maxcompete", lower = 0, upper = 1)
+)
 
-# Calculate evaluation metrics for all models
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
-cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+# Create a learner for regression with rpart
+learner <- makeLearner("regr.rpart", predict.type = "response")
 
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
-cat("Regression Tree RMSE:", tree_rmse, "\n")
+# Define the backtesting strategy (in this case, 10-fold cross-validation)
+resampling <- makeResampleDesc("CV", iters = 10)
 
-nn_predictions <- predict(nn_model, newdata = test_data)
-cat("NN RMSE:", tree_rmse, "\n")
+# Define the random search control object
+ctrl <- makeTuneControlRandom(maxit = 10)
 
-# Step e: Backtesting - placeholder 
+# Perform random search for hyperparameter tuning
+random_search <- tuneParams(
+  learner = learner,
+  task = makeRegrTask(data = train, target = "price"),
+  resampling = resampling,
+  par.set = param_space,
+  control = ctrl,
+  measures = list(rmse, mae)  # Specify evaluation metrics
+)
 
-# Function to compare model performance
-compare_model_performance <- function(models, model_names, data_train, data_test) {
+# Get the best hyperparameters
+best_hyperparameters <- random_search$x
+
+# Print the best-tuned hyperparameters
+print(best_hyperparameters)
+
+# Train the final model using the best hyperparameters
+tree_model_tuned <- rpart(
+  price ~ .,
+  data = train,
+  control = rpart.control(
+    cp = best_hyperparameters$cp,
+    minsplit = best_hyperparameters$minsplit,
+    minbucket = best_hyperparameters$minbucket,
+    maxdepth = best_hyperparameters$maxdepth,
+    maxcompete = best_hyperparameters$maxcompete
+  )
+)
+
+# Make predictions using the final tuned model
+predictions <- predict(tree_model_tuned, newdata = test)
+
+# Calculate residuals
+residuals <- test$price - predictions
+# Create diagnostic plots using
+par(mfrow = c(2, 2))  
+
+# Scatter plot of residuals vs. predictions
+ggplot(data = data.frame(Predictions = predictions, Residuals = residuals)) +
+  geom_point(aes(x = Predictions, y = Residuals)) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Residuals vs. Predictions",
+       x = "Predictions",
+       y = "Residuals") +
+  theme_minimal()
+
+# Histogram of residuals
+ggplot(data = data.frame(Residuals = residuals)) +
+  geom_histogram(aes(x = Residuals), bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Residuals",
+       x = "Residuals",
+       y = "Frequency") +
+  theme_minimal()
+
+# Normal Q-Q plot of residuals
+qqplot_data <- data.frame(Standardized_Residuals = scale(residuals))
+ggplot(qqplot_data, aes(sample = Standardized_Residuals)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot of Residuals") +
+  theme_minimal()
+
+# Residuals vs. Index plot
+ggplot(data = data.frame(Residuals = residuals, Index = seq_along(residuals))) +
+  geom_point(aes(x = Index, y = Residuals)) +
+  labs(title = "Residuals vs. Index",
+       x = "Index",
+       y = "Residuals") +
+  theme_minimal()
+
+# Paired t-test for differences between observed and actual values
+t_test <- t.test(test$price, tree_predictions, paired = TRUE)
+cat("\nPaired t-test for Differences:\n")
+cat("t statistic:", t_test$statistic, "\n")
+cat("p-value:", t_test$p.value, "\n")
+if (t_test$p.value < 0.05) {
+  cat("There is a significant difference between observed and predicted values (reject null hypothesis).\n")
+} else {
+  cat("There is no significant difference between observed and predicted values (fail to reject null hypothesis).\n")
+}
+
+# Compare model performance
+compare_model_performance <- function(models, model_names, train, test) {
   rmse_values <- c()
   rsquared_values <- c()
   mape_values <- c()
-
+ 
   for (i in 1:length(models)) {
     model <- models[[i]]
-    predictions <- predict(model, newdata = data_test)
-    rmse <- sqrt(mean((data_test$price - predictions)^2))
-    rsquared <- cor(data_test$price, predictions)^2
-    mape <- mean(abs((data_test$price - predictions) / data_test$price)) * 100
-
+    predictions <- predict(model, newdata = test)
+    rmse <- sqrt(mean((test$price - predictions)^2))
+    rsquared <- cor(test$price, predictions)^2
+    mape <- mean(abs((test$price - predictions) / test$price)) * 100
+   
     rmse_values <- c(rmse_values, rmse)
     rsquared_values <- c(rsquared_values, rsquared)
     mape_values <- c(mape_values, mape)
   }
-
-  # Create a data frame to hold the results
-  model_results <- data.frame(Model = model_names, RMSE = rmse_values, R_squared = rsquared_values, MAPE = mape_values)
-
-  # Create a table to compare model results
-  kable(model_results, format = "markdown")
+ 
+  return(list(rmse_values, rsquared_values, mape_values))
 }
+
+# Call the function to compare model performance
+models <- list(tree_model_tuned, tree_model)  
+model_names <- c("Tuned regression tree model", "Basic regression tree model")  
+performance_metrics <- compare_model_performance(models, model_names, train, test)
+
+# Create a data frame to hold the results
+model_results <- data.frame(Model = model_names,
+                             RMSE = performance_metrics[[1]],
+                             R_squared = performance_metrics[[2]],
+                             MAPE = performance_metrics[[3]])
+
+# Create a table to compare model results
+kable(model_results, format = "markdown")
 ```
 
 \newpage
