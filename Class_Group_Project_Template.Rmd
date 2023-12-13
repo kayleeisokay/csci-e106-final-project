@@ -10,7 +10,8 @@ author:
 - Zhenzhen Yin
 tags: [logistic, neuronal networks, etc..]
 abstract: |
-  We aimed to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Our dataset contained historical home sales prices of 21,613 houses in Kings County, USA (May 2014-May 2015), out of which we used 70% for training and 30% for testing. We selected several significant features using feature selection methods to build the models. Seven different linear regression models were developed using R and compared against each other, with lasso regression achieving the highest adjusted R-squared (0.775). In addition, we developed alternative models using regression tree, which achieved an adjusted R-squared value of ____. Our models suggest that the most frequent and significant features contributing to home prices in Kings County were __________, ___________, ________. 
+  We aimed to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Our dataset contained historical home sales prices of 21,613 houses in Kings County, USA (May 2014-May 2015), out of which we randomly sampled 70% for training and 30% for testing. We selected several significant features using feature selection methods to build the models. Seven different linear regression models were developed using R and compared against each other, with lasso regression achieving the highest adjusted R-squared (0.775). In addition, we developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
+  
   In conclusion, we proposed a model that could predict house sales prices based on commonly measured variables. We believe such a model can serve as a helpful tool for prospective consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that may increase or decrease home values. Importantly, we expect this model to be valid only within the geographical region of King County and for a limited period of time into the future. It is subject to changes in the market and broader economic conditions, thus we also provided a detailed model monitoring plan to alert us of significant deviations from our model. 
 date: "`r format(Sys.time(), '%d %B %Y')`"
 geometry: margin=1.3cm
@@ -87,20 +88,18 @@ HouseSales<-read.csv("KC_House_Sales.csv")
 
 ## Executive Summary
 
-This section will describe the model usage, your conclusions and any regulatory and internal requirements. In a real world scneario, this section is for senior management who do not need to know the details. They need to know high level (the purpose of the model, limitations of the model and any issues).
-
-In this report, we describe the development of a statistical model that can be used to predict house sales prices in Kings county, USA based on historic house sales data collected between May 2014 and May 2015. Validation in a test data set showed that the model is significant and has an adjusted R-squared value of ____. The model may be applied to estimate property value for consumers and property market agents, as well as to generate insights into the key factors contributing to home prices. It is important to note that we expect the model to work well only in geographical locations within King County and within a limited time frame into the future. As such, we have also included a model monitoring plan to detect substantial future deviations of our model.
+In this report, we describe the development of a statistical model that can be used to predict house sales prices in Kings county, USA based on historic house sales data collected between May 2014 and May 2015. Validation in a test data set showed that the best model is significant and has an adjusted R-squared value of 0.775. The model may be applied to estimate property value for consumers and property market agents, as well as to generate insights into the key factors contributing to home prices. It is important to note that we expect the model to work well only in geographical locations within King County and within a limited time frame into the future. As such, we have also included a model monitoring plan to detect substantial future deviations of our model.
 
 \newpage
 ## I. Introduction (5 points)
 
 *This section needs to introduce the reader to the problem to be resolved, the purpose, and the scope of the statistical testing applied. What you are doing with your prediction? What is the purpose of the model? What methods were trained on the data, how large is the test sample, and how did you build the model?*
 
-In this project, our goal is to build a statistical model that can predict house sales prices in Kings county, USA based on house sales data collected in that area between May 2014 and May 2015. The dataset contains information on 21613 houses, including the sale price, number of rooms, square footage, year built and renovated, view, and condition of the property. The house sale price was used as the outcome variable and all other variables were considered as independent variables. 70% of the dataset was used as training set and 30% was used as testing set. 
+In this project, our goal is to build a statistical model that can predict house sales prices in Kings county, USA based on house sales data collected in that area between May 2014 and May 2015. The dataset contains information on 21613 houses, including the sale price, number of rooms, square footage, year built and renovated, view, and condition of the property. The house sale price was used as the outcome variable and all other variables were considered as independent variables. 70% of the dataset was randomly sampled as training set and the remaining 30% was used as testing set. 
 
-Using this framework, we built several different models using linear regression, logistic regression, regression tree, and neural network. When building each model, feature selection methods were used and the appropriate diagnostic tests were applied to verify that model assumptions were met. <TODO: Elaborate more on each model>
+Using this framework, we built several different models using linear regression and random forest methods. First, we built a baseline OLS linear regression model using all available variables. Then we performed stepwise variable selection to ensure the inclusion of only significant variables. Diagnostic tests at this point indicated issues with normality assumption, multicollinearity, and constant variance assumption. These issues were largely resolved by a log transformation of the dependent variable as suggested by box-cox analysis. We further built models using ridge, lasso, and elastic net regression, as well as a robust regression to account for any effects of outliers. As an additional comparison, we also built a random forest model and employed hyperparameter tuning procedures. 
 
-Finally, the performance of each models was evaluated by its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is _____. This model indicated that the most important factors that influence house prices in King County, USA are ______. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It may also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. We have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
+Finally, the performance of each model was evaluated by its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our lasso regression model (adjusted R-squared = 0.775). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
 
 \newpage
 ## II. Description of the data and quality (15 points)
@@ -120,7 +119,7 @@ By looking at the structure of the data set, it is found that the variables "dat
 
 ```{r}
 # Data cleaning (price)
-df = read.csv("KC_House_Sales.csv")
+df = HouseSales
 df$price = parse_number(df$price)
 ```
 
@@ -167,9 +166,9 @@ knitr::kable(table(df$zipcode_start), col.names=c("zipcode","frequency"))
 ```{r}
 # Split into train/ test set:
 set.seed(1023)
-sample = sample(c(TRUE, FALSE), nrow(df), replace = TRUE, prob = c(0.7, 0.3))
-train = df[sample, ]
-test = df[!sample, ]
+sample_ind = sample(nrow(df),round(0.7*nrow(df)))
+train <- df[sample_ind, ]
+test <- df[-sample_ind, ]
 
 summary(train)
 ```
@@ -196,8 +195,6 @@ for (i in top.corr){
        xlab=i,ylab="price")
 }
 ```
-
-
 
 Using bar charts and boxplots, we can observe the types and distribution of all variables. The results are summarized in the table below.
 
@@ -262,7 +259,7 @@ for (i in 1:ncol(df.boxplot)){
 | zipcode_start| *A dummy variable that indicates whether zipcode starts with 980 or 981* | categorical| -0.007|
 
 
-The barplots and boxplots further indicate that distribution of price is skewed towards the right, with a median of 450,000 and a small subset of houses that are over 2,000,000. Several other factors also show a similar right-skewed distribution, for example "sqft_living" and "sqft_lot". We also notice some data points that may be outliers, for example a house that has 33 bedrooms or some houses that are recorded as having 0 bedroom 0 bathrooms. Further testing will be performed below to evaluate whether variable transformation is needed for model building.
+The barplots and boxplots further indicate that distribution of price is skewed towards the right, with a median of 450,000 and a small subset of houses that are over 2,000,000. Several other factors also show a similar right-skewed distribution, for example "sqft_living" and "sqft_lot". We also notice some data points that may be outliers, for example a house that has 33 bedrooms or some houses that are recorded as having 0 bedroom 0 bathrooms. Further testing will be performed in later sections to evaluate whether variable transformation is needed for model building.
 
 
 \newpage
@@ -323,7 +320,7 @@ Centering the variables do not change the interpretation of the coefficients. Ho
 
 ```{r section3c}
 # Drop December dummy variable due to collinearity with other months
-kc.house.df2<-dplyr::select(kc.house.df,-(month_Dec))
+kc.house.df<-dplyr::select(kc.house.df,-(month_Dec))
 
 #Apply transformations 
 
@@ -371,19 +368,15 @@ summary(baseline.model)
 
 *Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
 
-#TODO
-1. Stepwise feature selection
-2. Add plots (e.g. scale location, residual vs fitted)
-3. Normality plots
+First, we evaluated the base model performance.
 
-TODO: The following code needs to be updated once we have the updated models from stepwise feature selection.
 ```{r part IV - Fitting the baseline model on the test set}
 
 #Function to generate model performance
 CalcTestMetrics <- function(pred, act, n, p) {
   SST <- var(act)*(length(act)-1)
   SSE <- sum((act-pred)^2)
-  SSR <- sum(pred - mean(act))^2
+  SSR <- sum((pred - mean(act))^2)
   rsquared <- 1- SSE/SST
   
   adj.rsquared <- 1 - (((1 - rsquared)*(n-1)) / (n-p-1))
@@ -410,21 +403,23 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 # Using the function to calculate performance of the baseline model on the test set
 pred <- predict(baseline.model, kc.house.test.X)
 act <- kc.house.test.y
-n <- dim(model.matrix(baseline.model)[, -1])[1]
-p <- dim(model.matrix(baseline.model)[, -1])[2]
+n <- dim(model.matrix(baseline.model))[1]
+p <- dim(model.matrix(baseline.model))[2]
 
 performance_baseline = CalcTestMetrics(pred, act, n, p)
 performance_baseline
 ```
 
+Next, we applied stepwise variable selection.
 
 ```{r part IV - Stepwise both ways}
 library(olsrr)
 stepwise_model = ols_step_both_p(baseline.model, pent=0.35, prem=0.05)
+plot(stepwise_model$adjr,ylab="Adjusted R-squared",xlab="step_index",main="Adjusted R-squared in stepwise variable selection")
 stepwise_final = stepwise_model$model
 summary(stepwise_final)
 ```
-Stepwise didn't give us anything more in terms of prediction, but reduced the varibles as intended. Following, I`ll identify which variables were selected (and create a new dataframe to which we will use in our next interactions) and identify the ones dropped.
+Stepwise reduced the variables as intended. Following, I`ll identify which variables were selected (and create a new dataframe to which we will use in our next interactions) and identify the ones dropped.
 ```{r part IV -Identifying selected and eliminated variables}
 #Generating new dataframes with only the selected variables
 selected_variables = names(coef(stepwise_final))
@@ -438,7 +433,9 @@ dropped_variables = setdiff(original_predictors, selected_variables)
 
 dropped_variables
 ```
+
 Seems like we dropped 12 variables from our original 31. Of those 12, 10 were dummy month variables we generated, and sqft_lot and sqft_above.
+After this, we checked multi-collinearity with VIF analysis.
 
 ```{r part IV - Checking multicollinearity with VIF}
 #Fitting a new linear model with selected variables
@@ -458,8 +455,8 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
 pred_selected <- predict(selected_linear_model, selected_test_df)
 act_selected <- kc.house.test.y
-n_selected <- dim(model.matrix(selected_linear_model)[, -1])[1]
-p_selected <- dim(model.matrix(selected_linear_model)[, -1])[2]
+n_selected <- dim(model.matrix(selected_linear_model))[1]
+p_selected <- dim(model.matrix(selected_linear_model))[2]
 
 performance_selected = CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected)
 print(performance_selected)
@@ -477,34 +474,46 @@ vif_results <- data.frame(Variable = variable_names, VIF = vif_values)
 # Print the VIF results
 print(vif_results)
 ```
-We got 4 variables above our cutoff 10 Vif value: sqft_living, grade, sqft_adj_grade and sqft_adj_condition.I don't think they add much to interpretability, so I'm excluding them for now (maybe returning them when we use other remedial measures, like ridge regression)
+
+We got 3 variables above our cutoff 10 Vif value: sqft_living, sqft_adj_grade and sqft_adj_condition. We have compared the model performance with or without removing these variables and found that it had minimal effect. We restored them when we used other remedial measures, like ridge regression.
 
 ```{r part IV - Checking assumptions, fig.width=8}
 # First we eliminate the variables with high multicollinearity we just found out and fit a new linear model
-#VIF_eliminated = c("sqft_adj_grade", "sqft_adj_condition")
-#selected_train_df = selected_train_df[, !names(selected_train_df) %in% VIF_eliminated]
-#selected_test_df = selected_test_df[, !names(selected_test_df) %in% VIF_eliminated]
+#VIF_eliminated = c("sqft_adj_grade","sqft_adj_condition")
+#selected_train_df2 = selected_train_df[, !names(selected_train_df) %in% VIF_eliminated]
+#selected_test_df2 = selected_test_df[, !names(selected_test_df) %in% VIF_eliminated]
 
-#selected_linear_model = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
+#selected_linear_model2 = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df2))
 
-#pred_selected <- predict(selected_linear_model, selected_test_df)
+#pred_selected <- predict(selected_linear_model2, selected_test_df2)
 #act_selected <- kc.house.test.y
-#n_selected <- dim(model.matrix(selected_linear_model)[, -1])[1]
-#p_selected <- dim(model.matrix(selected_linear_model)[, -1])[2]
+#n_selected <- dim(model.matrix(selected_linear_model2)[, -1])[1]
+#p_selected <- dim(model.matrix(selected_linear_model2)[, -1])[2]
 
-#performance_selected = cbind(CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected))
-#print(performance_selected)
+#performance_selected_vif = cbind(CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected))
+#print(performance_selected_vif)
+```
 
+```{r}
+# Model diagnostic plots
+par(mfrow=c(2,2))
 plot(selected_linear_model)
 ```
+
+The diagnostic plots indicated issues with normality assumption, as there were many points especially on the higher end that deviated from expected quantiles. The scale-location plot showed violation of constant variance assumption. Overall the data seems heavily right-skewed, so we next performed box-cox analysis to check for any necessary transformations.
+
 ```{r part IV - Applying transformantions,fig.width=8}
 library(MASS)
 boxcox(selected_linear_model,lambda=seq(-0.2,0.2,0.01))
 transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
 summary(transformed_model)
+
+# Model diagnostic
+par(mfrow=c(2,2))
 plot(transformed_model)
 ```
-After transforming the model (log of the price), the assumptions seem to be fine. Just to be sure on normality, let's do some tests.
+
+Box-cox value indicates optimal lambda at a value very close to zero. Although zero falls just outside the 95% confidence interval, for practical and interpretability reasons we chose to perform log-transformation on the dependent variable. After transforming the model (log of the price), the assumptions seem to be fine. Just to be sure on normality, let's do some tests.
 
 ```{r part IV - Normality tests}
 std_residuals = rstandard(transformed_model)
@@ -515,6 +524,7 @@ ad.test(std_residuals)
 lillie.test(std_residuals)
 
 ```
+
 It seems like normality does not hold, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and normality tests shows that normality does not hold as well. It's up to question if this is  a huge problem, considering the size of the data set. However, non-parametric models should (and will, in the next part) be tried for better results, since some does not need those assumptions to work.
 
 ```{r part IV - Performance of transformed model}
@@ -534,12 +544,14 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
 pred_transformed = predict(transformed_model, selected_test_df)
 act_transformed <- y_test
-n_transformed <- dim(model.matrix(transformed_model)[, -1])[1]
-p_transformed <- dim(model.matrix(transformed_model)[, -1])[2]
+n_transformed <- dim(model.matrix(transformed_model))[1]
+p_transformed <- dim(model.matrix(transformed_model))[2]
 
 performance_transformed = CalcTestMetrics(pred_transformed, act_transformed, n_transformed, p_transformed)
 print(performance_transformed)
 ```
+
+In addition, we tested ridge, lasso and elastic net for building models.
 
 ```{r problem IV - Ridge regression}
 library(glmnet)
@@ -565,15 +577,13 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 pred_ridge = predict(ridge_model, s = best_lambda_ridge, 
                  newx = data.matrix(selected_test_df))[,1]
 act_ridge <- y_test
-n_ridge <- dim(model.matrix(transformed_model)[, -1])[1]
-p_ridge <- dim(model.matrix(transformed_model)[, -1])[2]
+n_ridge <- dim(model.matrix(transformed_model))[1]
+p_ridge <- dim(model.matrix(transformed_model))[2]
 
 performance_ridge = CalcTestMetrics(pred_ridge, act_ridge, n_ridge, p_ridge)
 print(performance_ridge)
 
 ```
-
-
 
 ```{r problem IV - Lasso regression}
 library(glmnet)
@@ -600,13 +610,14 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 pred_lasso = predict(lasso_model, s = best_lambda_lasso, 
                  newx = data.matrix(selected_test_df))[,1]
 act_lasso <- y_test
-n_lasso <- dim(model.matrix(transformed_model)[, -1])[1]
-p_lasso <- dim(model.matrix(transformed_model)[, -1])[2]
+n_lasso <- dim(model.matrix(transformed_model))[1]
+p_lasso <- dim(model.matrix(transformed_model))[2]
 
 performance_lasso = CalcTestMetrics(pred_lasso, act_lasso, n_lasso, p_lasso)
 print(performance_lasso)
 
 ```
+In this case, lasso regression still produced a model with 23 variables so no additional variables were dropped compared to ridge regression.
 
 ```{r problem IV - Elastic net regression}
 enet_model = cv.glmnet(x,y,alpha=0.5, nlambda=100,lambda.min.ratio=0.0001)
@@ -632,14 +643,15 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 pred_enet = predict(enet_model, s = best_lambda_enet, 
                  newx = data.matrix(selected_test_df))[,1]
 act_enet <- y_test
-n_enet <- dim(model.matrix(transformed_model)[, -1])[1]
-p_enet <- dim(model.matrix(transformed_model)[, -1])[2]
+n_enet <- dim(model.matrix(transformed_model))[1]
+p_enet <- dim(model.matrix(transformed_model))[2]
 
 performance_enet = CalcTestMetrics(pred_enet, act_enet, n_enet, p_enet)
 print(performance_enet)
 
 ```
 
+Elastic net regression without log transformation of price is included as another validation and comparison.
 ```{r problem IV - Elastic net regression without transformation}
 x1= data.matrix(selected_train_df)
 y1= kc.house.train.y
@@ -670,15 +682,15 @@ y_test1 = kc.house.test.y
 pred_enet = predict(enet_model1, s = best_lambda_enet, 
                  newx = data.matrix(selected_test_df))[,1]
 act_enet <- y_test1
-n_enet <- dim(model.matrix(transformed_model)[, -1])[1]
-p_enet <- dim(model.matrix(transformed_model)[, -1])[2]
+n_enet <- dim(model.matrix(transformed_model))[1]
+p_enet <- dim(model.matrix(transformed_model))[2]
 
-performance_enet = CalcTestMetrics(pred_enet, act_enet, n_enet, p_enet)
-print(performance_enet)
+performance_enet2 = CalcTestMetrics(pred_enet, act_enet, n_enet, p_enet)
+print(performance_enet2)
 
 ```
 
-
+Finally, we included robust regression due to our observation of potential outliers.
 ```{r problem IV - Robust regression}
 robust_model = rlm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df), psi = psi.huber)
 summary(robust_model)
@@ -696,13 +708,14 @@ knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 #Performance
 pred_robust = predict(robust_model, selected_test_df)
 act_robust <- y_test
-n_robust <- dim(model.matrix(robust_model)[, -1])[1]
-p_robust <- dim(model.matrix(robust_model)[, -1])[2]
+n_robust <- dim(model.matrix(robust_model))[1]
+p_robust <- dim(model.matrix(robust_model))[2]
 
 performance_robust = CalcTestMetrics(pred_robust, act_robust, n_robust, p_robust)
 print(performance_robust)
 
 ```
+
 With robust performance, it does not seem that outliers matter much (after transformation at least)
 
 ```{r problem IV - R2 table}
@@ -724,12 +737,18 @@ knitr::kable(sorted_results_df, caption = "Model Metrics")
 ```
 
 
+Overall, lasso regression model is the best performing model as it has the highest adjusted R-squared value and the lowest MSE (Note that baseline and stepwise models did not undergo log transformation of the dependent variable so their MSE values cannot be directly compared to that of the other log-transformed models).
+
 \newpage
 ## V. Challenger Models (15 points)
 
 *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
 
-```{r eval=FALSE}
+Part V
+
+We first built a basic regression tree model as a baseline non-parametric challenger model; results were not particularly strong (r-squared at ~0.6, which is lower than the r-squared of the linear regression model). We then tuned hyperparameters for the decision tree using random search (using RMSE and MAE as the metrics to optimise) and backtested the model using a cross-validation resampling approach. This only improved performance very slightly (small decline in RMSE and improvement in r-squared to 0.62). Ultimately we chose this tuned model as our challenger model, as it is relatively simple to build and implement, and fairly explainable (e.g. the splits tend to be easy to understand). Analysis of residuals showed that while there was significant skewness on the left and right tails, the normality assumption broadly holds; and a 2 sided t test confirmed that there is no significant difference between actual and predicted values. More complex models e.g. deep neural networks would likely perform better, but would likely consume too many computational resources for our purposes.
+
+```{r Part V, fig.width=7}
 # Load libraries
 library(caret)
 library(rpart)
@@ -738,106 +757,176 @@ library(knitr)
 library(dplyr)
 library(stringr)
 library(readr)
+library(kableExtra)
+library(mlr)
+library(rpart.plot)
 
-HouseSales <- read.csv('KC_House_Sales.csv')
+# Model building
 
-# Step a: Data Splitting
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(HouseSales), size = round(split_ratio * nrow(HouseSales)))
-train_data <- HouseSales[index, ]
-test_data <- HouseSales[-index, ]
+# Build basic regression tree
+tree_model <- rpart(price ~ ., data = train)
 
-# Step b: Model Building
+# Visualize the decision tree and feature importance
+# par(mfrow=c(1,2))  
+rpart.plot(tree_model, shadow.col = "gray", nn = TRUE)
+feature.imp<-data.frame(importance=tree_model$variable.importance)
 
-# Model 1: Logistic Regression
+feature.imp %>%
+  tibble::rownames_to_column(var = "feature") %>%
+   ggplot(aes(x = forcats::fct_reorder(feature, importance), y = importance)) +
+   geom_pointrange(aes(ymin = 0, ymax = importance), color = "cadetblue", size = .3) +
+   theme_minimal() +
+   coord_flip() +
+   labs(x = "", y = "Importance",main="Importance of model features")
+```
 
-# Create a binary variable 'high_price' based on the chosen percentile
-logisticdf <- HouseSales
-logisticdf$price <- parse_number(logisticdf$price)
-logisticdf$high_price <- ifelse(logisticdf$price >= 1000000, 1, 0)
+```{r}
+# Make predictions using basic regression tree
+tree_predictions <- predict(tree_model, newdata = test)
+tree_rmse <- sqrt(mean((tree_predictions - test$price)^2))
+tree_mae <- mean(abs(tree_predictions - test$price))
+tree_mse <- mean((tree_predictions - test$price)^2)
 
-# Create a new dataframe with 'high_price' column
-logisticdf <- logisticdf %>%
-  dplyr::select(-price)
-
-# Split data for logistic regrssion model
-set.seed(123)  # 
-split_ratio <- 0.7  # 70% training, 30% testing
-index <- sample(1:nrow(logisticdf), size = round(split_ratio * nrow(logisticdf)))
-train_data_logistic <- logisticdf[index, ]
-test_data_logistic <- logisticdf[-index, ]
-
-#Build basic logistic regrssion model
-logistic_model <- glm(high_price ~ ., data = train_data_logistic, family = binomial)
-summary(logistic_model)
-
-# Model 2: Regression Tree
-tree_model <- rpart(price ~ ., data = train_data)
-printcp(tree_model)  # Display complexity parameter plot
-plot(tree_model)  # Visualize the decision tree
-
-# Model 3: Neural Network
-nn_model <- neuralnet(price ~ ., data = train_data, hidden = c(5, 2), linear.output = TRUE)
-
-# Tune neural network hyperparameters - placehlder
-
-# Step c: Model Evaluation
-
-# Model 1: Logistic Regression
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
-cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
-
-# Model 2: Regression Tree
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
+#View basic regression tree results
 cat("Regression Tree RMSE:", tree_rmse, "\n")
+cat("Regression Tree MAE:", tree_mae, "\n")
+cat("Regression Tree MSE:", tree_mse, "\n")
 
-# Model 3: Neural Network
-nn_predictions <- predict(nn_model, newdata = test_data)
-# Calculate relevant performance metrics for the neural network model
+#Tune regression tree hyperparameters to improve performance
 
-# Step d: Model Comparison (Choose the best model based on evaluation metrics)
+# Define the hyperparameter space for random search
+param_space <- makeParamSet(
+  makeNumericParam("cp", lower = 0.01, upper = 0.1),
+  makeIntegerParam("minsplit", lower = 5, upper = 10),
+  makeIntegerParam("minbucket", lower = 5, upper = 10),
+  makeIntegerParam("maxdepth", lower = 5, upper = 15),
+  makeIntegerParam("maxcompete", lower = 0, upper = 1)
+)
 
-# Calculate evaluation metrics for all models
-logistic_predictions <- predict(logistic_model, newdata = test_data, type = 'response')
-logistic_accuracy <- sum((logistic_predictions > 0.5) == test_data$high_price) / length(test_data$high_price)
-cat("Logistic Regression Accuracy:", logistic_accuracy, "\n")
+# Create a learner for regression with rpart
+learner <- makeLearner("regr.rpart", predict.type = "response")
 
-tree_predictions <- predict(tree_model, newdata = test_data)
-tree_rmse <- sqrt(mean((tree_predictions - test_data$price)^2))
-cat("Regression Tree RMSE:", tree_rmse, "\n")
+# Define the backtesting strategy (in this case, 10-fold cross-validation)
+resampling <- makeResampleDesc("CV", iters = 10)
 
-nn_predictions <- predict(nn_model, newdata = test_data)
-cat("NN RMSE:", tree_rmse, "\n")
+# Define the random search control object
+ctrl <- makeTuneControlRandom(maxit = 10)
 
-# Step e: Backtesting - placeholder 
+# Perform random search for hyperparameter tuning
+random_search <- tuneParams(
+  learner = learner,
+  task = makeRegrTask(data = train, target = "price"),
+  resampling = resampling,
+  par.set = param_space,
+  control = ctrl,
+  measures = list(rmse, mae)  # Specify evaluation metrics
+)
 
-# Function to compare model performance
-compare_model_performance <- function(models, model_names, data_train, data_test) {
+# Get the best hyperparameters
+best_hyperparameters <- random_search$x
+
+# Print the best-tuned hyperparameters
+print(best_hyperparameters)
+
+# Train the final model using the best hyperparameters
+tree_model_tuned <- rpart(
+  price ~ .,
+  data = train,
+  control = rpart.control(
+    cp = best_hyperparameters$cp,
+    minsplit = best_hyperparameters$minsplit,
+    minbucket = best_hyperparameters$minbucket,
+    maxdepth = best_hyperparameters$maxdepth,
+    maxcompete = best_hyperparameters$maxcompete
+  )
+)
+
+# Make predictions using the final tuned model
+predictions <- predict(tree_model_tuned, newdata = test)
+
+# Calculate residuals
+residuals <- test$price - predictions
+# Create diagnostic plots using
+par(mfrow = c(2, 2))  
+
+# Scatter plot of residuals vs. predictions
+ggplot(data = data.frame(Predictions = predictions, Residuals = residuals)) +
+  geom_point(aes(x = Predictions, y = Residuals)) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Residuals vs. Predictions",
+       x = "Predictions",
+       y = "Residuals") +
+  theme_minimal()
+
+# Histogram of residuals
+ggplot(data = data.frame(Residuals = residuals)) +
+  geom_histogram(aes(x = Residuals), bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Residuals",
+       x = "Residuals",
+       y = "Frequency") +
+  theme_minimal()
+
+# Normal Q-Q plot of residuals
+qqplot_data <- data.frame(Standardized_Residuals = scale(residuals))
+ggplot(qqplot_data, aes(sample = Standardized_Residuals)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot of Residuals") +
+  theme_minimal()
+
+# Residuals vs. Index plot
+ggplot(data = data.frame(Residuals = residuals, Index = seq_along(residuals))) +
+  geom_point(aes(x = Index, y = Residuals)) +
+  labs(title = "Residuals vs. Index",
+       x = "Index",
+       y = "Residuals") +
+  theme_minimal()
+
+# Paired t-test for differences between observed and actual values
+t_test <- t.test(test$price, tree_predictions, paired = TRUE)
+cat("\nPaired t-test for Differences:\n")
+cat("t statistic:", t_test$statistic, "\n")
+cat("p-value:", t_test$p.value, "\n")
+if (t_test$p.value < 0.05) {
+  cat("There is a significant difference between observed and predicted values (reject null hypothesis).\n")
+} else {
+  cat("There is no significant difference between observed and predicted values (fail to reject null hypothesis).\n")
+}
+
+# Compare model performance
+compare_model_performance <- function(models, model_names, train, test) {
   rmse_values <- c()
   rsquared_values <- c()
   mape_values <- c()
-
+ 
   for (i in 1:length(models)) {
     model <- models[[i]]
-    predictions <- predict(model, newdata = data_test)
-    rmse <- sqrt(mean((data_test$price - predictions)^2))
-    rsquared <- cor(data_test$price, predictions)^2
-    mape <- mean(abs((data_test$price - predictions) / data_test$price)) * 100
-
+    predictions <- predict(model, newdata = test)
+    rmse <- sqrt(mean((test$price - predictions)^2))
+    rsquared <- cor(test$price, predictions)^2
+    mape <- mean(abs((test$price - predictions) / test$price)) * 100
+   
     rmse_values <- c(rmse_values, rmse)
     rsquared_values <- c(rsquared_values, rsquared)
     mape_values <- c(mape_values, mape)
   }
-
-  # Create a data frame to hold the results
-  model_results <- data.frame(Model = model_names, RMSE = rmse_values, R_squared = rsquared_values, MAPE = mape_values)
-
-  # Create a table to compare model results
-  kable(model_results, format = "markdown")
+ 
+  return(list(rmse_values, rsquared_values, mape_values))
 }
+
+# Call the function to compare model performance
+models <- list(tree_model_tuned, tree_model)  
+model_names <- c("Tuned regression tree model", "Basic regression tree model")  
+performance_metrics <- compare_model_performance(models, model_names, train, test)
+
+# Create a data frame to hold the results
+model_results <- data.frame(Model = model_names,
+                             RMSE = performance_metrics[[1]],
+                             R_squared = performance_metrics[[2]],
+                             MAPE = performance_metrics[[3]])
+
+# Create a table to compare model results
+kable(model_results, format = "markdown")
 ```
 
 \newpage
@@ -1176,8 +1265,22 @@ The plan to handle pipeline failures is to persist every production model and ev
 \newpage
 ## VIII. Conclusion (5 points)
 
-*Summarize your results here. What is the best model for the data and why?*
+This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with lasso regression achieving the highest adjusted R-squared (0.775) and lowest MSE. We developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
 
+Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 77% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
+
+Our simple linear regression analysis found that the variables with most significant p values are bathrooms, view, grade, latitude, year built, sqft_living15, year of purchase, and number of floors. All of these variables except year built is positively correlated with price. An interesting insight is that the timing of the house sale also matters, because purchases being made in January and February has a negative effect on house prices.
+
+```{r}
+knitr::kable(sorted_results_df, caption = "Model Metrics")
+knitr::kable(dplyr::select(coeff.q1.df,-c(ElasticNetNonTrans,Baseline,Stepwise)), caption = "Model Coefficients (showing log-transformed models only")
+```
+
+Our random forest model also highlighted a set of variables with highest importance, which includes grade, sqft_living, sqft_above, sqft_living15, bathrooms and latitude. Both random forest and linear regression models agree that higher latitude may predict higher house prices, suggesting that perhaps some less desirable areas correspond with lower latitude. In both types of models, higher grade (quality of construction and design) and higher number of bathrooms also associates with higher house prices. In contrast, most of the square footage variables relevant to random forest did not show strong significance in the linear models. It is possible that the relationship between square footage with price are non-linear and better captured by a non-parametric model like the random forest. All the square footage-related metrics also likely run into multicollinearity issues with linear regression.
+
+In conclusion, we propose a final lasso regression model that could predict house sales prices based on commonly measured variables. We believe such a model can be a helpful tool for consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that influence home values.
+
+\newpage
 ## Bibliography (7 points)
 
 *Please include all references, articles and papers in this section.*
@@ -1207,10 +1310,32 @@ https://www.ciclt.net/sn/clt/capitolimpact/gw_ziplist.aspx?zip=980&stfips=&state
 - https://www.rdocumentation.org/packages/dgof/versions/1.4/topics/ks.test
 - https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test
 
+9. Feature importance plot
+- https://bookdown.org/mpfoley1973/data-sci/classification-tree.html
+
 Lastly, we would like to express our sincere appreciation for the instructors and teaching assistants of CSCI E-106 for sharing their knowledge and support for this project.
 
 ## Appendix (3 points)
 
 *Please add any additional supporting graphs, plots and data analysis.*
 
+Additional plots and details from stepwise variable selection.
+```{r, fig.width=7}
+stepwise_model
+plot(stepwise_model)
+```
+
+Additional plot showing coefficients at different lambda values for ridge regression.
+```{r}
+plot(glmnet(x,y,alpha=0,lambda.min.ratio=0.00001),xvar="lambda",label=T)
+abline(v=log(best_lambda_ridge), col="blue") # Indicates our lambda value
+
+```
+
+Additional plot showing coefficients and number of variables at different lambda values for lasso regression.
+
+```{r}
+plot(glmnet(x,y,alpha=1,lambda.min.ratio=0.00001),xvar="lambda", label=T)
+abline(v=log(best_lambda_lasso), col="blue") # Indicates our lambda value
+```
 
