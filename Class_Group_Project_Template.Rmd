@@ -934,8 +934,135 @@ kable(model_results, format = "markdown")
 
 *Based on the performances on both train and test data sets, determine your primary (champion) model and the other model which would be your benchmark model. Validate your models using the test sample. Do the residuals look normal? Does it matter given your technique? How is the prediction performance using Pseudo R^2, SSE, RMSE?  Benchmark the model against alternatives. How good is the relative fit? Are there any serious violations of the model assumptions? Has the model had issues or limitations that the user must know? (Which assumptions are needed to support the Champion model?)* 
 
+In section IV, after log transforming the price variable the Q-Q plot was much smoother, indicating that residuals are more akin to normal than before. There was little difference in performance between the robust regressions, and an elastic net model was selected as a primary model. We believe the elastic net will serve as a conservative predictor due to its mix of L1 and L2 regularization and should handle complex new data well.
+
+We have selected a regression tree as the benchmark model because we believe that it is well suited to predict continuous data with a variety of predictor variables. In addition, as a non-parametric model it has the benefit of being resistant to the problems such as non-normality and heteroskedacity as seen in earlier sections. However, regression trees are often prone to over-fitting, which is why we will be comparing the predictions and outputs of this model against the elastic net model as the elastic net is more regularized. RMSE will be the best indicator for prediction error, as it is better for interpreting and a common metric for prediction.
+
+```{r}
+#Actual and predicted values for the two models
+tree.actual = test$price
+enet.actual = y_test
+tree.predicted = predict(tree_model_tuned, newdata = test)
+enet.predicted = predict(enet_model, s = best_lambda_enet,
+                 newx = data.matrix(selected_test_df))[,1]
+ 
+#Summarize statistics for tree regression
+tree.sse <- sum((tree.actual - tree.predicted)^2)
+tree.rmse <- sqrt(mean((tree.actual - tree.predicted)^2))
+tree.mae <- mean(abs(tree.actual - tree.predicted))
+tree.sst <- sum((tree.actual - mean(tree.actual))^2)
+tree.pseudo_r_squared <- 1 - (tree.sse / tree.sst)
+
+#Summarize statistics for elastic net on log transformed enet predictions
+#enet.sse <- sum((enet.actual - enet.predicted)^2)
+#enet.rmse <- sqrt(mean((enet.actual - enet.predicted)^2))
+#enet.mae <- mean(abs(enet.actual - enet.predicted))
+#enet.sst <- sum((enet.actual - mean(actual))^2)
+#enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
+
+# Summarize statistics for exponetiated enet predictions
+non_transformed_predictions <- exp(enet.predicted)
+enet.actual.exp = y_test1
+enet.sse.exp <- sum((enet.actual.exp - non_transformed_predictions)^2)
+enet.rmse.exp <- sqrt(mean((enet.actual.exp - non_transformed_predictions)^2))
+enet.mae.exp <- mean(abs(enet.actual.exp - non_transformed_predictions))
+enet.sst.exp <- sum((enet.actual.exp - mean(enet.actual))^2)
+enet.pseudo_r_squared.exp <- 1 - (enet.sse.exp / enet.sst.exp)
+
+model.results <- data.frame(
+  Metric = c("Pseudo R-squared", "SSE", "RMSE", "MAE"),
+  Regression_Tree = c(tree.pseudo_r_squared, tree.sse, tree.rmse, tree.mae),
+  Elastic_Net = c(enet.pseudo_r_squared.exp, enet.sse.exp, enet.rmse.exp, enet.mae.exp)
+)
+
+kable(model.results, format = "markdown")
+relative_fit = enet.pseudo_r_squared.exp / tree.pseudo_r_squared
+print(relative_fit)
+if (relative_fit < 1) {
+  cat("The regression tree model is better suited to predicting house price")
+} else if (relative_fit > 1) {
+  cat("The elastic net model is better suited to predicting house price")
+} else {
+  cat("The models are equally suitable for predicting house price")
+}
+```
+
+As seen in the metrics above, the Regression Tree and transform-corrected Elastic Net model perform similarly for predictions using the test data. The relative fit between elastic net and regression tree was 1.023885, which suggests that the elastic net model is a slightly better fit for the data. While both models have high Pseudo R-Squared values, the elastic net model performs slightly better with higher Pseudo R-squared (0.899) and lower RMSE (2.102e+05).
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+tree.residuals <- tree.actual - tree.predicted
+enet.residuals <- enet.actual - enet.predicted
+exp.enet.residuals <- enet.actual.exp - exp(enet.predicted)
+
+# Create data frames for visualization
+tree_residuals_plot <- data.frame(
+  Index = seq_along(tree.actual),
+  Residuals = tree.residuals
+)
+
+enet_residuals_plot <- data.frame(
+  Index = seq_along(enet.actual),
+  Residuals = enet.residuals
+)
+
+exp_enet_residuals_plot <- data.frame(
+  Index = seq_along(enet.actual.exp),
+  Residuals = exp.enet.residuals
+)
+
+# Create scatterplots for each model
+tree_plot <- ggplot(tree_residuals_plot, aes(x = Index, y = Residuals)) +
+  geom_point() +
+  labs(title = "Regression Tree Residuals",
+       x = "Index",
+       y = "Residuals") +
+  theme_minimal()
+
+enet_plot <- ggplot(enet_residuals_plot, aes(x = Index, y = Residuals)) +
+  geom_point() +
+  labs(title = "Elastic Net Residuals",
+       x = "Index",
+       y = "Residuals") +
+  theme_minimal()
+
+exp_enet_plot <- ggplot(exp_enet_residuals_plot, aes(x = Index, y = Residuals)) +
+  geom_point() +
+  labs(title = "Elastic Net Residuals",
+       x = "Index",
+       y = "Residuals") +
+  theme_minimal()
+
+tree.boxplot <- ggplot(data.frame(Residuals = tree.residuals), aes(x = "", y = Residuals)) +
+  geom_boxplot(fill = "lightblue", color = "blue") +
+  labs(title = "Tree Model Residuals",
+       x = "",
+       y = "Residuals") +
+  theme_minimal()
+
+enet.boxplot <- ggplot(data.frame(Residuals = exp.enet.residuals), aes(x = "", y = Residuals)) +
+  geom_boxplot(fill = "lightblue", color = "blue") +
+  labs(title = "Elastic Net Residuals",
+       x = "",
+       y = "Residuals") +
+  theme_minimal()
+
+par(mfrow = c(2,2))
+# Plot the box plots
+print(tree.boxplot)
+print(enet.boxplot)
+print(tree_plot)
+print(exp_enet_plot)
+```
 
 \newpage
+
+It was noted previously that there were problems with heteroskedacity and non-normality in the data. The residuals do appear roughly normal for both models in the plots above. Regardless, we do not expect that any of the assumptions made in standard linear regressions to have a major impact on these models. Elastic net contains regularization parameters to mitigate the impact of overfitting to imperfect data and regression trees do not hold these assumptions.
+
+Based on the performance of these models with the test data, there does not appear to be any major issues with these models. Both of them perform well with high Pseudo R-squared values. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
+
 ## VII. Ongoing Model Monitoring Plan (5 points)
 
 *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
