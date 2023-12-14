@@ -200,7 +200,7 @@ summary(train)
 
 ## Correlation Analysis {#section2d}
 
-Through the correlation matrix and graph, it can be found that variables "sqft_living", "grade", "sqft_above" and "sqft_living15" have a relatively high correlation with the response variable "price", around 0.6. However, the variables "sqft_lot", "condition", "yr_built", "long", "sqft_lot15", "year", "zipcode_start" and 12 different months have a very low correlation with "price", all below 0.1.
+Using the correlation matrix and graph, it can be found that variables `sqft_living`, `grade`, `sqft_above` and `sqft_living15` have a relatively high correlation with the response variable `price`, with a Pearson correlation coefficient around 0.6. However, the variables `sqft_lot`, `condition`, `yr_built`, `long`, `sqft_lot15`, `year`, `zipcode_start` and 12 different months have a very low correlation with `price`, all below 0.1.
 
 ```{r}
 cor_matrix = round(cor(train), 3)
@@ -211,9 +211,9 @@ cor_matrix
 corrplot(cor_matrix, method = "circle")
 ```
 
-To further examine the top variables correlating with "price", we plot several scatter plots below. This initial analysis shows that price is indeed positively correlated with "sqft_living", "grade", "sqft_above" and "sqft_living15". It also appears that the prices of homes show a large range from 75,000 to 7,700,000, with most data points concentrated on the lower half of this scale. We will perform further testing during model development to understand if a transformation of the price variable would be beneficial.
+To further examine the top variables correlating with "price", we plot several scatter plots below. This initial analysis shows that price is indeed positively correlated with `sqft_living`, `grade`, `sqft_above` and `sqft_living15`. It also appears that the prices of homes show a large range from 75,000 to 7,700,000, with most data points concentrated on the lower half of this scale. We will perform further testing during model development to understand if a transformation of the price variable would be beneficial.
 
-```{r, fig.width=7}
+```{r, fig.width=7, }
 par(mfrow=c(2,2))
 
 top.corr<-c("sqft_living", "grade", "sqft_above", "sqft_living15")
@@ -225,20 +225,25 @@ for (i in top.corr){
 
 ## Distribution Analysis {#section2e}
 
-Using bar charts and boxplots, we can observe the types and distribution of all variables. The results are summarized in the table below.
+Using bar charts and box plots, we can observe the types and distribution of all variables. The results are summarized in the table below.
 
-```{r, fig.width=7}
+```{r, fig.width=14, echo = FALSE, fig.height=8}
 # Bar charts
-par(mfrow=c(2,3))
+par(mfrow=c(2,2), cex = 1.6, mar = c(1.8, 1, 2, 1))
 
 for (i in 1:ncol(df)){
-  hist(df[,i], main = names(df[i]), xlab = NULL, col = "lightblue")
+  hist(
+    df[,i], 
+    main = names(df[i]), 
+    xlab = NULL,
+    col = "lightblue"
+  )
 }
 
 ```
 
 ```{r, fig.width=7}
-# Boxplots on continuous variables only
+# Box plots on continuous variables only
 par(mfrow=c(2,3))
 
 categorical.var<-c("bedrooms","bathrooms","floors","waterfront","view","condition","grade","yr_built","yr_renovated","year","zipcode_start",colnames(df)[grep("month",colnames(df))])
@@ -294,43 +299,42 @@ The barplots and boxplots further indicate that distribution of price is skewed 
 \newpage
 # III. Model Development Process (15 points) {#section3}
 
-*Build a regression model to predict price.  And of course,  create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc. *
+```{r, include = FALSE}
+# Build a regression model to predict price.  And of course, create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc.
+```
 
-```{r section3a}
+## Feature Transformations {#section3a}
+
+```{r}
 set.seed(1023)
 
 response <- "price"
 
 #Renaming to conform to unified convention
 kc.house.df <- df %>% rename("year_built" = "yr_built")
-```
 
-```{r section3b}
-#Feature Ideas
 #Quality Adjusted Features
 transform_sqft_adj_grade <- function(kc.house.df){
-  
   sqft_adj_grade <- kc.house.df[, "sqft_living"] / kc.house.df[, "grade"]
   
   return (sqft_adj_grade)
 }
 
 transform_sqft_adj_condition <- function(kc.house.df){
-  
   sqft_adj_condition <- kc.house.df[, "sqft_living"] / kc.house.df[, "condition"]
   
   return (sqft_adj_condition)
 }
 
 transform_sqft_adj_waterfront <- function(kc.house.df){
-  
   sqft_adj_waterfront <- kc.house.df[, "sqft_living"] * kc.house.df[, "waterfront"]
   
   return (sqft_adj_waterfront)
 }
 
+#Polynomial Terms
 transform_poly_sqft_living <- function(kc.house.df){
-  #Center variables for polynomial terms
+  #Center variables for polynomial terms, to reduce MC
   sqft_living <- (kc.house.df$sqft_living - mean(kc.house.df$sqft_living)) 
   sqft_living_squared <- sqft_living^2
   
@@ -338,6 +342,7 @@ transform_poly_sqft_living <- function(kc.house.df){
 }
 
 transform_poly_floor <- function(kc.house.df){
+  #Center variables for polynomial terms, to reduce MC
   floors <- (kc.house.df$floors - mean(kc.house.df$floors)) 
   floors_squared <- floors^2
   
@@ -345,9 +350,15 @@ transform_poly_floor <- function(kc.house.df){
 }
 ```
 
-Centering the variables do not change the interpretation of the coefficients. However they do change the interpretation of the intercept. Instead of the intercept being read as the value of price when all variables are zero. It is not read as price when all variables are zero, `floors` is equal to its average and `sqft_living` is equal to its average.
+We create quality adjusted measures because a square foot of property isn't equally valuable across properties. A square foot is more expensive for a high-rise condo (high quality) than it is for a dilapidated home (low quality). Hence the reason we thought to include these features. 
 
-```{r section3c}
+For polynomial terms, we wanted to capture the diminishing marginal utility effect for floors and square footage. Intuitively, adding 300 square foot to a studio apartment increases its value a lot more than adding 300 square foot to a mansion in Atherton. The same can be said about floors.
+
+In terms of interpretation, centering the variables does not change the interpretation of the coefficients. However they do change the interpretation of the intercept. Instead of the intercept being read as the value of price when all variables are zero. It is not read as price when all variables are zero, and when `floors` is equal to its average and `sqft_living` is equal to its average.
+
+```{r}
+set.seed(1023)
+
 # Drop December dummy variable due to collinearity with other months
 kc.house.df<-dplyr::select(kc.house.df,-(month_Dec))
 
@@ -370,6 +381,10 @@ kc.house.df$floors_squared <- res$squared
 kc.house.df$sqft_basement <- NULL
 ```
 
+We apply the transformations and drop `sqft_basement` due to perfect multicollinearity because `sqft_basement` can be expressed as a linear combination of `sqft_above` and `sqft_living`.
+
+## Train/Test Split {#section3b}
+
 ```{r section3d}
 set.seed(1023)
 
@@ -377,12 +392,14 @@ set.seed(1023)
 train_prop <- 0.7
 
 index <- sample(1:nrow(HouseSales), size = round(train_prop * nrow(kc.house.df)))
-kc.house.train.X <- kc.house.df[index, -which(names(kc.house.df) %in% c(response))] # modified slightly 
+kc.house.train.X <- kc.house.df[index, -which(names(kc.house.df) %in% c(response))] 
 kc.house.train.y <- kc.house.df [index, response]
 
 kc.house.test.X <- kc.house.df [-index, -which(names(kc.house.df) %in% c(response))]
 kc.house.test.y <- kc.house.df [-index, response]
 ```
+
+From the specs, we set the seed via `set.seed(1023)` and create a 70/30 train and test split respectively. We now proceed to fit the model on the training dataset.
 
 ```{r}
 #baseline model
@@ -390,6 +407,19 @@ baseline.model <- lm(price ~ ., data = cbind(price = kc.house.train.y, kc.house.
 summary(baseline.model)
 ```
 
+From the model output we see that all variables are significant except for `sqft_above`, `zipcode_start`, and month dummies May - Nov. The adjusted $R^2$ is 0.7463. Interestingly the quality-adjusted and polynomial features we created in this section are very significant, which provide evidence that there exists diminishing marginal returns and the need for quality adjustment. Not as important since the project focuses on prediction but including dummies for month and year can be thought of as fixed effects, which means our model coefficients are robust to bias from unobservable confounding on the year and month level, assuming the unobservables are fixed. If an unobservable like rainfall has an effect on price it is controlled via the fixed effects assuming rainfall in March is the same across time.
+
+## Model Diagnostic Plots
+
+```{r}
+plot(baseline.model)
+
+#Residual vs Leverage
+ols_plot_resid_lev(baseline.model)
+
+#Cook's Distance Visualized
+ols_plot_cooksd_chart(baseline.model)
+```
 
 \newpage
 
