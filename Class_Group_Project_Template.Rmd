@@ -956,11 +956,11 @@ tree.sst <- sum((tree.actual - mean(tree.actual))^2)
 tree.pseudo_r_squared <- 1 - (tree.sse / tree.sst)
 
 #Summarize statistics for elastic net on log transformed enet predictions
-#enet.sse <- sum((enet.actual - enet.predicted)^2)
+enet.sse <- sum((enet.actual - enet.predicted)^2)
 #enet.rmse <- sqrt(mean((enet.actual - enet.predicted)^2))
 #enet.mae <- mean(abs(enet.actual - enet.predicted))
-#enet.sst <- sum((enet.actual - mean(actual))^2)
-#enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
+enet.sst <- sum((enet.actual - mean(actual))^2)
+enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
 
 # Summarize statistics for exponetiated enet predictions
 non_transformed_predictions <- exp(enet.predicted)
@@ -969,16 +969,16 @@ enet.sse.exp <- sum((enet.actual.exp - non_transformed_predictions)^2)
 enet.rmse.exp <- sqrt(mean((enet.actual.exp - non_transformed_predictions)^2))
 enet.mae.exp <- mean(abs(enet.actual.exp - non_transformed_predictions))
 enet.sst.exp <- sum((enet.actual.exp - mean(enet.actual))^2)
-enet.pseudo_r_squared.exp <- 1 - (enet.sse.exp / enet.sst.exp)
+
 
 model.results <- data.frame(
   Metric = c("Pseudo R-squared", "SSE", "RMSE", "MAE"),
   Regression_Tree = c(tree.pseudo_r_squared, tree.sse, tree.rmse, tree.mae),
-  Elastic_Net = c(enet.pseudo_r_squared.exp, enet.sse.exp, enet.rmse.exp, enet.mae.exp)
+  Elastic_Net = c(enet.pseudo_r_squared, enet.sse.exp, enet.rmse.exp, enet.mae.exp)
 )
 
 kable(model.results, format = "markdown")
-relative_fit = enet.pseudo_r_squared.exp / tree.pseudo_r_squared
+relative_fit = enet.pseudo_r_squared / tree.pseudo_r_squared
 print(relative_fit)
 if (relative_fit < 1) {
   cat("The regression tree model is better suited to predicting house price")
@@ -989,7 +989,7 @@ if (relative_fit < 1) {
 }
 ```
 
-As seen in the metrics above, the Regression Tree and transform-corrected Elastic Net model perform similarly for predictions using the test data. The relative fit between elastic net and regression tree was 1.023885, which suggests that the elastic net model is a slightly better fit for the data. While both models have high Pseudo R-Squared values, the elastic net model performs slightly better with higher Pseudo R-squared (0.899) and lower RMSE (2.102e+05).
+As seen in the metrics above, the Regression Tree performs much better in terms of R-Squared than the Elastic Net with values of 0.878 vs 0.675, respctively. The relative fit between elastic net and regression tree was 0.7683983, which suggests that the Regression Tree model is a much better fit for the data. Both models have similar RMSE for their prediction error 2.28e+05 with the Regression Tree and 2.10e+05 for the Elastic Net.
 
 ```{r}
 library(ggplot2)
@@ -1063,7 +1063,7 @@ print(exp_enet_plot)
 
 It was noted previously that there were problems with heteroskedacity and non-normality in the data. The residuals do appear roughly normal for both models in the plots above. Regardless, we do not expect that any of the assumptions made in standard linear regressions to have a major impact on these models. Elastic net contains regularization parameters to mitigate the impact of overfitting to imperfect data and regression trees do not hold these assumptions.
 
-Based on the performance of these models with the test data, there does not appear to be any major issues with these models. Both of them perform well with high Pseudo R-squared values. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
+Based on the performance of their performance with the test data, the two models attain a similar level of prediction error. Despite this, the Regression Tree has a much larger Pseudo R-Squared value suggesting that it is better suited for this data. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
 
 ## VII. Ongoing Model Monitoring Plan (5 points)
 
