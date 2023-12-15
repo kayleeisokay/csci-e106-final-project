@@ -93,7 +93,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Executive Summary
 
-In this report, we describe the development of a statistical model that can be used to predict house sales prices in Kings County, USA based on historic house sales data collected between May 2014 and May 2015. Validation in a test data set showed that the best model is significant and has an adjusted R-squared value of 0.775. The model may be applied to estimate property value for consumers and property market agents, as well as to generate insights into key contributing factors to home prices. It is important to note that we expect the model to work well only in geographical locations within King County and within a limited time frame into the future. As such, we have also included a model monitoring plan to detect substantial future deviations of our model.
+In this report, we describe the development of a statistical model that can be used to predict house sales prices in Kings County, USA based on historic house sales data collected between May 2014 and May 2015. Validation in a test data set showed that the best model is significant and has an adjusted R-squared value of 0.758. The model may be applied to estimate property value for consumers and property market agents, as well as to generate insights into key contributing factors to home prices. It is important to note that we expect the model to work well only in geographical locations within King County and within a limited time frame into the future. As such, we have also included a model monitoring plan to detect substantial future deviations of our model.
 
 \newpage
 # Section I. Introduction (5 points) {#section1}
@@ -108,7 +108,7 @@ In this project, our goal is to build a statistical model that can predict house
 
 Using this framework, we built several different models using linear regression and random forest methods. First, we built a baseline ordinary least squares (OLS) model using all available variables. Then we performed stepwise variable selection to ensure inclusion of only significant variables. Diagnostic tests at this point indicated issues with normality assumption, multicollinearity, and constant variance assumption. These issues were largely resolved by a log transformation of the dependent variable as suggested by Box-Cox analysis. We further built models using ridge, lasso, and elastic net regression, as well as a robust regression to account for any effects from outliers. As an additional comparison, we also built a random forest model and employed hyperparameter tuning procedures. 
 
-Finally, the performance of each model was evaluated on its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our lasso regression model (adjusted R-squared = 0.775). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
+Finally, the performance of each model was evaluated on its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our elastic net regression model (adjusted R-squared = 0.758). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
 
 \newpage
 # Section II. Description of the Data and Quality (15 points) {#section2}
@@ -120,7 +120,8 @@ Finally, the performance of each model was evaluated on its accuracy in predicti
 ```
 
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
+#All library dependencies loaded here
 library(ggplot2)
 library(corrplot)
 library(readr)
@@ -130,6 +131,16 @@ library(lmtest)
 library(nortest)
 library(car)
 library(glmnet)
+library(MASS)
+library(knitr)
+library(caret)
+library(rpart)
+library(nnet)
+library(stringr)
+library(readr)
+library(kableExtra)
+library(mlr)
+library(rpart.plot)
 ```
 
 ```{r}
@@ -212,13 +223,13 @@ cor_matrix = round(cor(train), 3)
 cor_matrix
 ```
 
-```{r}
+```{r, fig.height=8}
 corrplot(cor_matrix, method = "circle")
 ```
 
 To further examine the top variables correlating with "price", we plot several scatter plots below. This initial analysis shows that price is indeed positively correlated with `sqft_living`, `grade`, `sqft_above` and `sqft_living15`. It also appears that the prices of homes show a large range from 75,000 to 7,700,000, with most data points concentrated on the lower half of this scale. We will perform further testing during model development to understand if a transformation of the price variable would be beneficial.
 
-```{r, fig.width=7, }
+```{r, fig.width=7, fig.height=7}
 par(mfrow=c(2,2))
 
 top.corr<-c("sqft_living", "grade", "sqft_above", "sqft_living15")
@@ -302,7 +313,7 @@ The barplots and boxplots further indicate that distribution of price is skewed 
 
 
 \newpage
-# III. Model Development Process (15 points) {#section3}
+# Section III. Model Development Process (15 points) {#section3}
 
 ```{r, include = FALSE}
 # Build a regression model to predict price.  And of course, create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc.
@@ -496,7 +507,7 @@ As expected, the results of the Breusch Pagan test confirm the visual results in
 
 \newpage
 
-# IV. Model Performance Testing (15 points) {#section4}
+# Section IV. Model Performance Testing (15 points) {#section4}
 
 ```{r, include = FALSE}
 # *Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
@@ -656,7 +667,7 @@ Variable selection methods don't do well to remedy these particular issues. If w
 
 ```{r part IV - Applying transformantions, fig.width=8}
 set.seed(1023)
-library(MASS)
+
 boxcox(selected_linear_model,lambda=seq(-0.2,0.2,0.01))
 transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
 summary(transformed_model)
@@ -932,9 +943,6 @@ Interestingly the problem observations identified in previous parts (e.g 13244, 
 ## Summary
 
 ```{r problem IV - R2 table}
-library(knitr)
-library(dplyr)
-
 results_df <- data.frame(
   Model = c('Baseline', 'Stepwise', 'Transformed', 'Ridge', 'Lasso', 'Elastic Net', 'Robust', "Elatic Net (Untransformed)"),
   Adj.RSquared = c(
@@ -995,27 +1003,15 @@ all_models
 ```
 
 \newpage
-# V. Challenger Models (15 points) {#section5}
+# Section V. Challenger Models (15 points) {#section5}
 
-*Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
-
-Part V
+```{r, include = FALSE}
+# *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
+```
 
 We first built a basic regression tree model as a baseline non-parametric challenger model; results were not particularly strong (r-squared at ~0.6, which is lower than the r-squared of the linear regression model). We then tuned hyperparameters for the decision tree using random search (using RMSE and MAE as the metrics to optimise) and backtested the model using a cross-validation resampling approach. This only improved performance very slightly (small decline in RMSE and improvement in r-squared to 0.62). Ultimately we chose this tuned model as our challenger model, as it is relatively simple to build and implement, and fairly explainable (e.g. the splits tend to be easy to understand). Analysis of residuals showed that while there was significant skewness on the left and right tails, the normality assumption broadly holds; and a 2 sided t test confirmed that there is no significant difference between actual and predicted values. More complex models e.g. deep neural networks would likely perform better, but would likely consume too many computational resources for our purposes.
 
 ```{r Part V, fig.width=7}
-# Load libraries
-library(caret)
-library(rpart)
-library(nnet)
-library(knitr)
-library(dplyr)
-library(stringr)
-library(readr)
-library(kableExtra)
-library(mlr)
-library(rpart.plot)
-
 # Model building
 
 # Build basic regression tree
@@ -1185,9 +1181,11 @@ kable(model_results, format = "markdown")
 ```
 
 \newpage
-# VI. Model Limitation and Assumptions (15 points) {#section6}
+# Section VI. Model Limitation and Assumptions (15 points) {#section6}
 
-*Based on the performances on both train and test data sets, determine your primary (champion) model and the other model which would be your benchmark model. Validate your models using the test sample. Do the residuals look normal? Does it matter given your technique? How is the prediction performance using Pseudo R^2, SSE, RMSE?  Benchmark the model against alternatives. How good is the relative fit? Are there any serious violations of the model assumptions? Has the model had issues or limitations that the user must know? (Which assumptions are needed to support the Champion model?)* 
+```{r, include = FALSE}
+# *Based on the performances on both train and test data sets, determine your primary (champion) model and the other model which would be your benchmark model. Validate your models using the test sample. Do the residuals look normal? Does it matter given your technique? How is the prediction performance using Pseudo R^2, SSE, RMSE?  Benchmark the model against alternatives. How good is the relative fit? Are there any serious violations of the model assumptions? Has the model had issues or limitations that the user must know? (Which assumptions are needed to support the Champion model?)* 
+```
 
 In section IV, after log transforming the price variable the Q-Q plot was much smoother, indicating that residuals are more akin to normal than before. There was little difference in performance between the robust regressions, and an elastic net model was selected as a primary model. We believe the elastic net will serve as a conservative predictor due to its mix of L1 and L2 regularization and should handle complex new data well.
 
@@ -1212,7 +1210,7 @@ tree.pseudo_r_squared <- 1 - (tree.sse / tree.sst)
 enet.sse <- sum((enet.actual - enet.predicted)^2)
 #enet.rmse <- sqrt(mean((enet.actual - enet.predicted)^2))
 #enet.mae <- mean(abs(enet.actual - enet.predicted))
-enet.sst <- sum((enet.actual - mean(actual))^2)
+enet.sst <- sum((enet.actual - mean(enet.actual))^2)
 enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
 
 # Summarize statistics for exponetiated enet predictions
@@ -1245,9 +1243,6 @@ if (relative_fit < 1) {
 As seen in the metrics above, the Regression Tree performs much better in terms of R-Squared than the Elastic Net with values of 0.878 vs 0.675, respctively. The relative fit between elastic net and regression tree was 0.7683983, which suggests that the Regression Tree model is a much better fit for the data. Both models have similar RMSE for their prediction error 2.28e+05 with the Regression Tree and 2.10e+05 for the Elastic Net.
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-
 tree.residuals <- tree.actual - tree.predicted
 enet.residuals <- enet.actual - enet.predicted
 exp.enet.residuals <- enet.actual.exp - exp(enet.predicted)
@@ -1318,15 +1313,17 @@ It was noted previously that there were problems with heteroskedacity and non-no
 
 Based on the performance of their performance with the test data, the two models attain a similar level of prediction error. Despite this, the Regression Tree has a much larger Pseudo R-Squared value suggesting that it is better suited for this data. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
 
-# VII. Ongoing Model Monitoring Plan (5 points) {#section7}
+# Section VII. Ongoing Model Monitoring Plan (5 points) {#section7}
 
-*How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
+```{r, include = FALSE}
+# *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
+```
 
 ## Overview
 
 For model monitoring there are four areas to track 1) model stability, 2) prediction performance, 3) incremental data quality and 4) data pipeline failures. 
 
-## 1. Prediction Stability
+## Prediction Stability
 
 This subsection concerns itself with stability of predictions. Price predictions often are used by loan originators to size a loan or as an input to a consumer product. For example, assume the product is a home price recommendation for homeowners looking to see. If the homeowners aka the customers get highly variable sale price recommendations month to month, it'll result in subpar user experience, creating distrust between the customer and the firm. 
 
@@ -1414,8 +1411,6 @@ For assumption checking, we use Anderson-Darling test to check normality of pred
 In practice, model stability tests tend to be overly sensitive so we will trigger Slack warnings when the p-values of the test are less than 0.01. 
 
 ```{r}
-library(nortest)
-
 #Current Model
 cutoff_date <- adjust_months(cutoff_date, 1)
 train_start <- adjust_months(cutoff_date, -lookback.window)
@@ -1474,8 +1469,6 @@ For this section we track model metrics over time to ensure the model continues 
 If any metrics fall below the baseline production model, we will trigger a slack message.
 
 ```{r}
-library(ggplot2)
-
 #Iterate over folds
 roll_model <- function(cutoff_date, form){
   
@@ -1560,7 +1553,6 @@ The `Adjusted R Squared over Months` plot will have no triggers. `RMSE over Mont
 When new data comes in at monthly interval we will perform checks to prevent malformed data from entering the model. First we create graphs to add to a dashboard for visual inspection. These are the `Residuals vs Leverage` plot to detect outliers, leverage points or both and the `Cook's Distance` chart to detect influential points. The hope is to catch problematic points early, before they reach the model.
 
 ```{r}
-library(olsrr)
 incremental_data <- curr_test_data
 incremental.model <- lm(price ~ . -year, data = incremental_data)
 
@@ -1647,7 +1639,7 @@ The plan to handle pipeline failures is to persist every production model and ev
 ![Model Monitoring Architecture](img/model_monitoring.png)
 
 \newpage
-# VIII. Conclusion (5 points) {#section8}
+# Section VIII. Conclusion (5 points) {#section8}
 
 This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.758) and lowest MSE. We developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
 
@@ -1701,7 +1693,9 @@ Lastly, we would like to express our sincere appreciation for the instructors an
 
 ## Appendix (3 points)
 
-*Please add any additional supporting graphs, plots and data analysis.*
+```{r, include = FALSE}
+# *Please add any additional supporting graphs, plots and data analysis.*
+```
 
 Additional plots and details from stepwise variable selection.
 ```{r, fig.width=7}
