@@ -125,6 +125,11 @@ library(ggplot2)
 library(corrplot)
 library(readr)
 library(dplyr)
+library(olsrr)
+library(lmtest)
+library(nortest)
+library(car)
+library(glmnet)
 ```
 
 ```{r}
@@ -242,9 +247,9 @@ for (i in 1:ncol(df)){
 
 ```
 
-```{r, fig.width=7}
+```{r, fig.width=8, fig.height=8}
 # Box plots on continuous variables only
-par(mfrow=c(2,3))
+par(mfrow=c(2,2))
 
 categorical.var<-c("bedrooms","bathrooms","floors","waterfront","view","condition","grade","yr_built","yr_renovated","year","zipcode_start",colnames(df)[grep("month",colnames(df))])
 df.boxplot<-dplyr::select(df,-all_of(categorical.var))
@@ -407,30 +412,105 @@ baseline.model <- lm(price ~ ., data = cbind(price = kc.house.train.y, kc.house.
 summary(baseline.model)
 ```
 
-From the model output we see that all variables are significant except for `sqft_above`, `zipcode_start`, and month dummies May - Nov. The adjusted $R^2$ is 0.7463. Interestingly the quality-adjusted and polynomial features we created in this section are very significant, which provide evidence that there exists diminishing marginal returns and the need for quality adjustment. Not as important since the project focuses on prediction but including dummies for month and year can be thought of as fixed effects, which means our model coefficients are robust to bias from unobservable confounding on the year and month level, assuming the unobservables are fixed. If an unobservable like rainfall has an effect on price it is controlled via the fixed effects assuming rainfall in March is the same across time.
+From the model output we see that all variables are significant except for `sqft_above`, `zipcode_start`, and month dummies May - Nov. The adjusted $R^2$ is 0.7463. Interestingly the quality-adjusted and polynomial features we created in this section are very significant, which provide evidence that there exists diminishing marginal returns and the need for quality adjustment. 
 
-## Model Diagnostic Plots
+Lastly not as important since the project focuses on prediction but including dummies for `month` and `year` can be thought of as month and year fixed effects, which means our model coefficients are robust to bias from unobservable confounding on the year and month level, assuming the unobservables are time-invariant. Essentially, we remove variation between months and years. For example if an unobservable like rainfall has an effect on price it will controlled via the fixed effects assuming rainfall in March is the same across time. An example for years, would be proportion of white people because demographics change extremely slowly and in our short time horizon can be assumed to be constant over years. The effect of proportion of white people on price would be controlled for by the year fixed effect.
+
+## Model Diagnostic Plots {#section3c}
+
+We now proceed to provide diagnostic plots as a preview to any problems that will be remedied. The first four plots are the staples.
+
+`Residuals vs Fitted`: The residuals look centered around zero as indicated by the red line, however residuals are hetereoskedastic with a megaphone shape to it. This suggests a need for weighted least squares as remedy.
+
+`QQ Plot`: The residuals look very non-normal as the points deviate heavily from the expected values under normality. The shape indicate that the residuals have heavy tails.
+
+`Scale Location`: The red line is increasing indicating presence of hetereoskedasticity, specifically the variance of the residuals is increasing with fitted values. This plot agrees with the `Residuals vs Fitted` that the non-constant variance assumption is violated.
+
+`Residuals vs Leverage`: There are two observations that are above 1, indicating that the points are very likely to be influential. Cook's distance summarizes the effect of case $i$ on all fitted values, meaning observations 7253 and 8093 are likely to influence the baseline regression coefficients quite a bit.
+
+Violations of constant variance assumption and normality affect one's ability to conduct inference on the model (e.g. hypothesis testing on coefficients) because those test statistics (e.g. t-test) assume normality. Hetereoskedasticity affects the standard errors of inferential tests and coefficients causing them to be unreliable and less precise. Recall that the Gauss Markov theorem stated that the variance of the coefficients are the most efficient but only when the homokedasticity assumption is upheld. Lastly hetereoskedasticity does not bias a model's coefficients. It only affects the standard errors.
+
+```{r, fig.width=8, fig.height=8}
+par(mfrow=c(2,2))
+plot(baseline.model)
+```
 
 ```{r}
-plot(baseline.model)
-
+par(mfrow=c(2,2))
 #Residual vs Leverage
 ols_plot_resid_lev(baseline.model)
 
 #Cook's Distance Visualized
 ols_plot_cooksd_chart(baseline.model)
+
+#DFFITS
+ols_plot_dffits(baseline.model)
 ```
+
+From the `Outlier and Leverage Diagnostics` plot we see observations 13244, 643, 11395, and 9986 as one of the many possibly problematic points, as they are labeled as "outlier & leverage". Moving on the `Cook's Distance` plot, which measures case $i$ influence on all fitted values, observations 13244 and 643 are standouts. Lastly we move on to `DFFITS`, which measures influence of case $i$ on fitted value $i$ $(\hat{y}_i)$, again 13244 and 643 are standout points.
+
+```{r}
+#DFBETAS, plotting only two predictors for brevity sake
+plot_ob = ols_plot_dfbetas(baseline.model, print_plot = FALSE)
+plot_ob$plots[4]
+plot_ob$plots[10]
+```
+
+Finally for completeness we include `DFBETAS` and for brevity sake only included two predictors but curious readers can adjust code if need be. The plots show the same observations flagged in prior metrics. For `sqft_living` observations 643 and 13244 greatly influence the value of the coefficient on `sqft_living`. The same two points also have strong influence on the coefficient on `grade`.
+
+## Model Diagnostics Statistical Tests {#section3d}
+
+To support all statements prior, we will not conduct statistical tests to quantitatively support or deny the visual plots in the previous subsection. We will use the Anderson-Darling test to test for normality because when Shapiro-Wilk test was applied R threw and error, saying the sample size is too large for Shapiro-Wilk and suggest AD test instead. The hypotheses for the test are as follows.
+
+$$
+H_0: \text{Data is normally distributed}
+$$
+
+$$
+H_1: \text{Data is not normally distributed}
+$$
+
+```{r}
+ad.test(baseline.model$residuals)
+```
+
+The results of the Anderson-Darling test confirm the visual results in the prior subsection. The p-value is small, much less than the standard $\alpha = 0.05$, so we reject the null and conclude that residuals for the baseline OLS model is not normally distributed.
+
+Next we apply Breusch Pagan test to statistically test the constant variance assumption for residuals. The hypotheses for the test are as follows.
+
+$$
+H_0: \text{Error Variance are constant}
+$$
+
+$$
+H_1: \text{Error Variance are not constant}
+$$
+
+```{r}
+#test statistic is chi square distributed
+bptest(baseline.model, studentize=FALSE)
+```
+
+As expected, the results of the Breusch Pagan test confirm the visual results in the prior subsection. The p-value is small, much less than the standard $\alpha = 0.05$, so we reject the null and conclude that error variance is not constant.
 
 \newpage
 
 # IV. Model Performance Testing (15 points) {#section4}
 
-*Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
+```{r, include = FALSE}
+# *Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
+```
 
-First, we evaluated the base model performance.
+## Overview {#section4a}
 
-```{r part IV - Fitting the baseline model on the test set}
+In this section we will try several modeling approaches and evaluate each on the test set. The model to be tested are 1) baseline 2) stepwise both ways 3) Box-Cox transformed OLS 4) ridge 5) lasso 6) elastic net 7) elastic net normalized 6) robust regression with huber weights.
 
+
+## Baseline OLS {#section4b}
+
+First, we evaluate the baseline model's performance on the test set.
+
+```{r}
 #Function to generate model performance
 CalcTestMetrics <- function(pred, act, n, p) {
   SST <- var(act)*(length(act)-1)
@@ -448,7 +528,7 @@ CalcTestMetrics <- function(pred, act, n, p) {
     mae = mae)
 }
 
-# Coefficients
+# Create coefficients table and join model coefficients
 coeff.lm.df <- data.frame(Baseline = baseline.model$coefficients)
 coeff.lm.df$Coefficients <- rownames(coeff.lm.df)
 rownames(coeff.lm.df) <- NULL
@@ -456,9 +536,10 @@ coeff.lm.df <- dplyr::select(coeff.lm.df, Coefficients, Baseline)
 coeff.q1.df <-
   coeff.lm.df %>%
   dplyr::mutate(Baseline = ifelse(Baseline == 0, "--", scales::comma(Baseline, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
+```
 
 
+```{r}
 # Using the function to calculate performance of the baseline model on the test set
 pred <- predict(baseline.model, kc.house.test.X)
 act <- kc.house.test.y
@@ -469,16 +550,34 @@ performance_baseline = CalcTestMetrics(pred, act, n, p)
 performance_baseline
 ```
 
-Next, we applied stepwise variable selection.
+The adjusted $R^2$ on the test set for the baseline OLS model is 0.737 which is only slightly less than 0.7469.
+
+## Stepwise Both Ways {#section4c}
+
+Next, we applied stepwise variable selection in both directions using p-value as the selection criteria.
 
 ```{r part IV - Stepwise both ways}
-library(olsrr)
+#Parameters pent=0.35, prem=0.05 ensure final model's predictors are significant
 stepwise_model = ols_step_both_p(baseline.model, pent=0.35, prem=0.05)
-plot(stepwise_model$adjr,ylab="Adjusted R-squared",xlab="step_index",main="Adjusted R-squared in stepwise variable selection")
+
+ggplot(
+  data.frame(adjr = stepwise_model$adjr, index = 1:length(stepwise_model$adjr)), 
+  aes(x = index, y = adjr)
+) +
+ylim(0.71, 0.75) + 
+geom_hline(yintercept=0.748, linetype="dashed", color = "red") + 
+annotate("text", x=6, y=0.75, label="0.748", size = 3, color = "red") +
+geom_point(size = 4, color='darkturquoise') +
+labs(x = "Step Index", y = "Adjusted R-squared", title = "Adjusted R-squared (Stepwise Both Ways)")
+```
+
+```{r}
 stepwise_final = stepwise_model$model
 summary(stepwise_final)
 ```
-Stepwise reduced the variables as intended. Following, I`ll identify which variables were selected (and create a new dataframe to which we will use in our next interactions) and identify the ones dropped.
+
+Stepwise both ways reduced the set of predictors and all predictors are significant as intended. Next I will identify which variables were selected and create a new train/test dataset to run the stepwise OLS model.
+
 ```{r part IV -Identifying selected and eliminated variables}
 #Generating new dataframes with only the selected variables
 selected_variables = names(coef(stepwise_final))
@@ -493,10 +592,9 @@ dropped_variables = setdiff(original_predictors, selected_variables)
 dropped_variables
 ```
 
-Seems like we dropped 12 variables from our original 31. Of those 12, 10 were dummy month variables we generated, and sqft_lot and sqft_above.
-After this, we checked multi-collinearity with VIF analysis.
+Stepwise selection dropped twelve variables from our original set of thirty-one predictors. Then were month dummies and the others were `sqft_lot` and `sqft_above`. Now wee checked for the presence of multicollinearity using VIF.
 
-```{r part IV - Checking multicollinearity with VIF}
+```{r}
 #Fitting a new linear model with selected variables
 selected_linear_model = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
 
@@ -508,60 +606,48 @@ coeff.q1.df <-
   dplyr::left_join(coeff.sw.df, by = "Coefficients") %>%
   dplyr::mutate(Stepwise = ifelse(dplyr::coalesce(Stepwise, 0) == 0, "--", 
                                   scales::comma(Stepwise, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
-
-
+#Checking performance on the test set
 pred_selected <- predict(selected_linear_model, selected_test_df)
 act_selected <- kc.house.test.y
 n_selected <- dim(model.matrix(selected_linear_model))[1]
 p_selected <- dim(model.matrix(selected_linear_model))[2]
 
 performance_selected = CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected)
-print(performance_selected)
+performance_selected
+```
 
-
-#Checking performance on the test set
-library(car)
+```{r}
 vif_values = vif(selected_linear_model)
 variable_names <- names(vif_values)
 vif_values <- as.numeric(vif_values)
 
 # Create a data frame with variable names and VIF values
 vif_results <- data.frame(Variable = variable_names, VIF = vif_values)
-
-# Print the VIF results
-print(vif_results)
+vif_results[vif_results$VIF > 10, ]
 ```
 
-We got 3 variables above our cutoff 10 Vif value: sqft_living, sqft_adj_grade and sqft_adj_condition. We have compared the model performance with or without removing these variables and found that it had minimal effect. We restored them when we used other remedial measures, like ridge regression.
-
-```{r part IV - Checking assumptions, fig.width=8}
-# First we eliminate the variables with high multicollinearity we just found out and fit a new linear model
-#VIF_eliminated = c("sqft_adj_grade","sqft_adj_condition")
-#selected_train_df2 = selected_train_df[, !names(selected_train_df) %in% VIF_eliminated]
-#selected_test_df2 = selected_test_df[, !names(selected_test_df) %in% VIF_eliminated]
-
-#selected_linear_model2 = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df2))
-
-#pred_selected <- predict(selected_linear_model2, selected_test_df2)
-#act_selected <- kc.house.test.y
-#n_selected <- dim(model.matrix(selected_linear_model2)[, -1])[1]
-#p_selected <- dim(model.matrix(selected_linear_model2)[, -1])[2]
-
-#performance_selected_vif = cbind(CalcTestMetrics(pred_selected, act_selected, n_selected, p_selected))
-#print(performance_selected_vif)
-```
+We have four variables above our cutoff of 10: `sqft_living`, `sqft_adj_grade`, `sqft_adj_condition` and `grade`. VIF provides evidence of multicollinearity but it is unknown which specific variables are highly correlated with the four. This will need further investigation. Recall that multicollinearity affects the standard error of the model one way to see its effect is to take the square root.
 
 ```{r}
+sqrt(vif_results[vif_results$VIF > 10, ]$VIF)
+```
+
+This means that the standard error on `sqft_living` is 17 times larger than had multicollinearity not been present.
+
+```{r fig.width=8, fig.height=8}
 # Model diagnostic plots
 par(mfrow=c(2,2))
 plot(selected_linear_model)
 ```
 
-The diagnostic plots indicated issues with normality assumption, as there were many points especially on the higher end that deviated from expected quantiles. The scale-location plot showed violation of constant variance assumption. Overall the data seems heavily right-skewed, so we next performed box-cox analysis to check for any necessary transformations.
+The diagnostic plots for the stepwise selected model indicates issues with normality assumption as indicated by the `QQ Plot`. The residuals deviate greatly from the expected values under normality and shows a pattern akin to a distribution with heavy tails. The constant variance assumption is also shown to be violated via the `Residuals vs Fitted` plot and the `Scale-Location` plot. These look similar to the baseline OLS model's. The residuals show a megaphone shape and the variance is increasing with fitted values as shown by the increasing red line in the `Scale-Location` plot. Lastly two observations have large Cook's distances which mean influential points may also a problem. 
 
-```{r part IV - Applying transformantions,fig.width=8}
+Variable selection methods don't do well to remedy these particular issues. If we get lucky and predictors that have outliers get dropped or if hetereoskedasticity is caused by one predictor then perhaps it can solve the issue. However in most cases problematic points are scattered across the feature space.
+
+## Box-Cox Transformation {#section4d}
+
+```{r part IV - Applying transformantions, fig.width=8}
 library(MASS)
 boxcox(selected_linear_model,lambda=seq(-0.2,0.2,0.01))
 transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
@@ -572,34 +658,35 @@ par(mfrow=c(2,2))
 plot(transformed_model)
 ```
 
-Box-cox value indicates optimal lambda at a value very close to zero. Although zero falls just outside the 95% confidence interval, for practical and interpretability reasons we chose to perform log-transformation on the dependent variable. After transforming the model (log of the price), the assumptions seem to be fine. Just to be sure on normality, let's do some tests.
+Box-cox value indicates optimal lambda at a value very close to zero. Although zero falls just outside the 95% confidence interval, for practical and interpretability reasons we chose to perform log-transformation on the dependent variable. After transforming the model (log of the price), the assumptions seem to be fine. To support the visual claims we conduct statistical tests.
+
+The first test is the Anderson-Darling test because as explained in prior sections, the Shapiro-Wilk test does not work on large samples. Refer to [section](#section3d) for the hypotheses of the test.
 
 ```{r part IV - Normality tests}
 std_residuals = rstandard(transformed_model)
-
-library(nortest)
 ad.test(std_residuals)
-
-lillie.test(std_residuals)
-
 ```
 
-It seems like normality does not hold, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and normality tests shows that normality does not hold as well. It's up to question if this is  a huge problem, considering the size of the data set. However, non-parametric models should (and will, in the next part) be tried for better results, since some does not need those assumptions to work.
+The p-value of the test remains small. We reject the null and conclude that residuals are not normal for the transformed model. Next we apply the Lilliefors test which is just a special case of the KS-Test that tests for normality instead of any arbitrary distribution.
+
+```{r}
+lillie.test(std_residuals)
+```
+
+Overall it seems like normality does not hold, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and statistical tests shows that normality does not hold as well. It's up to question if this is a huge problem because violations of normality primary affect inference and not prediction. However, non-parametric models should  be tried for better results, since these modeling approaches do not need those assumptions.
 
 ```{r part IV - Performance of transformed model}
 y_test = log(kc.house.test.y)
 
 # Coefficients
-coeff.tr.df <- data.frame(Transformed = transformed_model$coefficients)
+coeff.tr.df <- data.frame(Stepwise_Box_Cox = transformed_model$coefficients)
 coeff.tr.df$Coefficients <- rownames(coeff.tr.df)
 coeff.q1.df <-
   coeff.q1.df %>%
   dplyr::left_join(coeff.tr.df, by = "Coefficients") %>%
-  dplyr::mutate(Transformed = ifelse(dplyr::coalesce(Transformed, 0) == 0, "--", 
-                                  scales::comma(Transformed, accuracy = 1e-4)))
+  dplyr::mutate(Stepwise_Box_Cox = ifelse(dplyr::coalesce(Stepwise_Box_Cox, 0) == 0, "--", 
+                                  scales::comma(Stepwise_Box_Cox, accuracy = 1e-4)))
 knitr::kable(coeff.q1.df, caption = "Model Coefficients")
-
-
 
 pred_transformed = predict(transformed_model, selected_test_df)
 act_transformed <- y_test
@@ -610,13 +697,17 @@ performance_transformed = CalcTestMetrics(pred_transformed, act_transformed, n_t
 print(performance_transformed)
 ```
 
+Comparing models across coefficients, we see the signs agree except for `waterfront`, `condition`, and `sqft_adj_grade`. The stepwise Box-Cox model's coefficients for this set makes more sense because having a waterfront, a good condition home and more square footage should increase a home's price and not decrease it. 
+
+\newpage
+
+## Ridge Regression
+
 In addition, we tested ridge, lasso and elastic net for building models.
 
 ```{r problem IV - Ridge regression}
-library(glmnet)
-
-x= data.matrix(selected_train_df)
-y= log(kc.house.train.y)
+x = data.matrix(selected_train_df)
+y = log(kc.house.train.y)
 
 ridge_model = cv.glmnet(x,y,alpha=0, nlambda=100,lambda.min.ratio=0.0001)
 best_lambda_ridge = ridge_model$lambda.min
@@ -625,13 +716,20 @@ best_lambda_ridge = ridge_model$lambda.min
 coeff.ridge.df <- stats::coef(ridge_model , s = best_lambda_ridge)
 coeff.ridge.df <- data.frame(Coefficients = coeff.ridge.df@Dimnames[[1]],
                              Ridge = coeff.ridge.df@x)
-coeff.q1.df <-
-  coeff.q1.df %>%
+
+coeff.df.regularized <- data.frame(Baseline = baseline.model$coefficients)
+coeff.df.regularized$Coefficients <- rownames(coeff.df.regularized)
+rownames(coeff.df.regularized) <- NULL
+coeff.df.regularized <- dplyr::select(coeff.df.regularized, Coefficients, Baseline) 
+
+coeff.df.regularized <-
+  coeff.df.regularized %>%
   dplyr::left_join(coeff.ridge.df, by = "Coefficients") %>%
   dplyr::mutate(Ridge = ifelse(dplyr::coalesce(Ridge, 0) == 0, "--", 
                                scales::comma(Ridge, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
+```
 
+```{r}
 #Performance
 pred_ridge = predict(ridge_model, s = best_lambda_ridge, 
                  newx = data.matrix(selected_test_df))[,1]
@@ -641,7 +739,6 @@ p_ridge <- dim(model.matrix(transformed_model))[2]
 
 performance_ridge = CalcTestMetrics(pred_ridge, act_ridge, n_ridge, p_ridge)
 print(performance_ridge)
-
 ```
 
 ```{r problem IV - Lasso regression}
@@ -776,6 +873,12 @@ print(performance_robust)
 ```
 
 With robust performance, it does not seem that outliers matter much (after transformation at least)
+
+```{r}
+#Weighted Least Squares
+
+
+```
 
 ```{r problem IV - R2 table}
 library(knitr)
@@ -1262,6 +1365,8 @@ curr_sq_error <- (curr_test_data[, "price"] - curr.pred)^2
 t.test(prev_sq_error, curr_sq_error)
 
 #Check predictions are normal
+#H0: Data is normally distributed
+#H1: Data is not normally distributed
 ad.test(current.model$residuals)
 ```
 
@@ -1511,12 +1616,24 @@ stepwise_model
 plot(stepwise_model)
 ```
 
+### Ridge Regression
+
 Additional plot showing coefficients at different lambda values for ridge regression.
+
 ```{r}
 plot(glmnet(x,y,alpha=0,lambda.min.ratio=0.00001),xvar="lambda",label=T)
 abline(v=log(best_lambda_ridge), col="blue") # Indicates our lambda value
 
 ```
+
+Additional plot showing cross-validation selection for best lambda for ridge regression.
+
+```{r}
+cv.ridge <- cv.glmnet(x, y, alpha=0, nlambda=100, lambda.min.ratio=0.0001)
+plot(cv.ridge)
+```
+
+### Lasso
 
 Additional plot showing coefficients and number of variables at different lambda values for lasso regression.
 
@@ -1525,3 +1642,10 @@ plot(glmnet(x,y,alpha=1,lambda.min.ratio=0.00001),xvar="lambda", label=T)
 abline(v=log(best_lambda_lasso), col="blue") # Indicates our lambda value
 ```
 
+Additional plot showing cross-validation selection for best lambda for lasso regression.
+
+```{r}
+cv.lasso <- cv.glmnet(x, y, alpha=1, nlambda=100, lambda.min.ratio=0.00001)
+plot(cv.lasso)
+```
+```
