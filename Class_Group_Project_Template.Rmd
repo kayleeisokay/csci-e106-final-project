@@ -320,13 +320,13 @@ kc.house.df <- df %>% rename("year_built" = "yr_built")
 
 #Quality Adjusted Features
 transform_sqft_adj_grade <- function(kc.house.df){
-  sqft_adj_grade <- kc.house.df[, "sqft_living"] / kc.house.df[, "grade"]
+  sqft_adj_grade <- kc.house.df[, "sqft_living"] * kc.house.df[, "grade"]
   
   return (sqft_adj_grade)
 }
 
 transform_sqft_adj_condition <- function(kc.house.df){
-  sqft_adj_condition <- kc.house.df[, "sqft_living"] / kc.house.df[, "condition"]
+  sqft_adj_condition <- kc.house.df[, "sqft_living"] * kc.house.df[, "condition"]
   
   return (sqft_adj_condition)
 }
@@ -407,12 +407,13 @@ kc.house.test.y <- kc.house.df [-index, response]
 From the specs, we set the seed via `set.seed(1023)` and create a 70/30 train and test split respectively. We now proceed to fit the model on the training dataset.
 
 ```{r}
+set.seed(1023)
 #baseline model
 baseline.model <- lm(price ~ ., data = cbind(price = kc.house.train.y, kc.house.train.X))
 summary(baseline.model)
 ```
 
-From the model output we see that all variables are significant except for `sqft_above`, `zipcode_start`, and month dummies May - Nov. The adjusted $R^2$ is 0.7463. Interestingly the quality-adjusted and polynomial features we created in this section are very significant, which provide evidence that there exists diminishing marginal returns and the need for quality adjustment. 
+From the model output we see that all variables are significant except for `sqft_above`, `zipcode_start`, `grade`, `floor_squared` and month dummies May - Nov. The adjusted $R^2$ is 0.7463. Interestingly the quality-adjusted and polynomial features we created in this section are very significant, which provide evidence that there exists diminishing marginal returns and the need for quality adjustment. The p-value for `floors_squared` is just under an $\alpha = 0.05$ most likely because most homes don't have high of floors to the point where diminishing returns start to effect. Regardless we see the effect a bit in the regression.
 
 Lastly not as important since the project focuses on prediction but including dummies for `month` and `year` can be thought of as month and year fixed effects, which means our model coefficients are robust to bias from unobservable confounding on the year and month level, assuming the unobservables are time-invariant. Essentially, we remove variation between months and years. For example if an unobservable like rainfall has an effect on price it will controlled via the fixed effects assuming rainfall in March is the same across time. An example for years, would be proportion of white people because demographics change extremely slowly and in our short time horizon can be assumed to be constant over years. The effect of proportion of white people on price would be controlled for by the year fixed effect.
 
@@ -511,6 +512,7 @@ In this section we will try several modeling approaches and evaluate each on the
 First, we evaluate the baseline model's performance on the test set.
 
 ```{r}
+set.seed(1023)
 #Function to generate model performance
 CalcTestMetrics <- function(pred, act, n, p) {
   SST <- var(act)*(length(act)-1)
@@ -540,6 +542,7 @@ coeff.q1.df <-
 
 
 ```{r}
+set.seed(1023)
 # Using the function to calculate performance of the baseline model on the test set
 pred <- predict(baseline.model, kc.house.test.X)
 act <- kc.house.test.y
@@ -557,6 +560,7 @@ The adjusted $R^2$ on the test set for the baseline OLS model is 0.737 which is 
 Next, we applied stepwise variable selection in both directions using p-value as the selection criteria.
 
 ```{r part IV - Stepwise both ways}
+set.seed(1023)
 #Parameters pent=0.35, prem=0.05 ensure final model's predictors are significant
 stepwise_model = ols_step_both_p(baseline.model, pent=0.35, prem=0.05)
 
@@ -564,14 +568,15 @@ ggplot(
   data.frame(adjr = stepwise_model$adjr, index = 1:length(stepwise_model$adjr)), 
   aes(x = index, y = adjr)
 ) +
-ylim(0.71, 0.75) + 
-geom_hline(yintercept=0.748, linetype="dashed", color = "red") + 
-annotate("text", x=6, y=0.75, label="0.748", size = 3, color = "red") +
+ylim(0.71, 0.78) + 
+geom_hline(yintercept=0.755, linetype="dashed", color = "red") + 
+annotate("text", x=6, y=0.758, label="0.755", size = 3, color = "red") +
 geom_point(size = 4, color='darkturquoise') +
 labs(x = "Step Index", y = "Adjusted R-squared", title = "Adjusted R-squared (Stepwise Both Ways)")
 ```
 
 ```{r}
+set.seed(1023)
 stepwise_final = stepwise_model$model
 summary(stepwise_final)
 ```
@@ -579,6 +584,7 @@ summary(stepwise_final)
 Stepwise both ways reduced the set of predictors and all predictors are significant as intended. Next I will identify which variables were selected and create a new train/test dataset to run the stepwise OLS model.
 
 ```{r part IV -Identifying selected and eliminated variables}
+set.seed(1023)
 #Generating new dataframes with only the selected variables
 selected_variables = names(coef(stepwise_final))
 selected_variables = setdiff(selected_variables, "(Intercept)")
@@ -592,9 +598,10 @@ dropped_variables = setdiff(original_predictors, selected_variables)
 dropped_variables
 ```
 
-Stepwise selection dropped twelve variables from our original set of thirty-one predictors. Then were month dummies and the others were `sqft_lot` and `sqft_above`. Now wee checked for the presence of multicollinearity using VIF.
+Stepwise selection dropped twelve variables from our original set of thirty-one predictors. Then were month dummies and the others were `sqft_lot`, `sqft_above` and `grade`. Now wee checked for the presence of multicollinearity using VIF.
 
 ```{r}
+set.seed(1023)
 #Fitting a new linear model with selected variables
 selected_linear_model = lm(price ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
 
@@ -627,13 +634,13 @@ vif_results <- data.frame(Variable = variable_names, VIF = vif_values)
 vif_results[vif_results$VIF > 10, ]
 ```
 
-We have four variables above our cutoff of 10: `sqft_living`, `sqft_adj_grade`, `sqft_adj_condition` and `grade`. VIF provides evidence of multicollinearity but it is unknown which specific variables are highly correlated with the four. This will need further investigation. Recall that multicollinearity affects the standard error of the model one way to see its effect is to take the square root.
+We have three variables above our cutoff of 10: `sqft_living`, `sqft_adj_grade`, and `sqft_adj_condition`. VIF provides evidence of multicollinearity but it is unknown which specific variables are highly correlated with the four. This will need further investigation. Recall that multicollinearity affects the standard error of the model one way to see its effect is to take the square root.
 
 ```{r}
 sqrt(vif_results[vif_results$VIF > 10, ]$VIF)
 ```
 
-This means that the standard error on `sqft_living` is 17 times larger than had multicollinearity not been present.
+This means that the standard error on `sqft_living` is 8 times larger than had multicollinearity not been present.
 
 ```{r fig.width=8, fig.height=8}
 # Model diagnostic plots
@@ -648,6 +655,7 @@ Variable selection methods don't do well to remedy these particular issues. If w
 ## Box-Cox Transformation {#section4d}
 
 ```{r part IV - Applying transformantions, fig.width=8}
+set.seed(1023)
 library(MASS)
 boxcox(selected_linear_model,lambda=seq(-0.2,0.2,0.01))
 transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
@@ -658,7 +666,7 @@ par(mfrow=c(2,2))
 plot(transformed_model)
 ```
 
-Box-cox value indicates optimal lambda at a value very close to zero. Although zero falls just outside the 95% confidence interval, for practical and interpretability reasons we chose to perform log-transformation on the dependent variable. After transforming the model (log of the price), the assumptions seem to be fine. To support the visual claims we conduct statistical tests.
+Box-cox value indicates optimal lambda at a value very close to zero. Zero also falls within a 95% confidence interval that is very small, suggesting large confidence in a log transformation. After transforming the model (log of the price), the assumptions seem to be fine. To support the visual claims we conduct statistical tests.
 
 The first test is the Anderson-Darling test because as explained in prior sections, the Shapiro-Wilk test does not work on large samples. Refer to [section](#section3d) for the hypotheses of the test.
 
@@ -672,20 +680,29 @@ The p-value of the test remains small. We reject the null and conclude that resi
 ```{r}
 lillie.test(std_residuals)
 ```
+Lastly we check the homoskedasticity assumption with Breush Pagan test. Refer to [section 3](#section3d) for hypotheses.
 
-Overall it seems like normality does not hold, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and statistical tests shows that normality does not hold as well. It's up to question if this is a huge problem because violations of normality primary affect inference and not prediction. However, non-parametric models should  be tried for better results, since these modeling approaches do not need those assumptions.
+```{r}
+#test statistic is chi square distributed
+bptest(transformed_model, studentize=FALSE)
+```
+
+The p-value is small therefore there is still evidence of hetereoskedasticity.
+
+Overall it seems like neither normality nor homoskedasticity holds, even though the Q-Q plot looks much better after transformation. Looks like the standardized residuals are heavy on the tails, and statistical tests shows that normality does not hold as well. It's up to question if this is a huge problem because violations of normality primary affect inference and not prediction. However, non-parametric models should be tried for better results, since these modeling approaches do not need those assumptions.
 
 ```{r part IV - Performance of transformed model}
+set.seed(1023)
 y_test = log(kc.house.test.y)
 
 # Coefficients
-coeff.tr.df <- data.frame(Stepwise_Box_Cox = transformed_model$coefficients)
+coeff.tr.df <- data.frame(StepwiseBoxCox = transformed_model$coefficients)
 coeff.tr.df$Coefficients <- rownames(coeff.tr.df)
 coeff.q1.df <-
   coeff.q1.df %>%
   dplyr::left_join(coeff.tr.df, by = "Coefficients") %>%
-  dplyr::mutate(Stepwise_Box_Cox = ifelse(dplyr::coalesce(Stepwise_Box_Cox, 0) == 0, "--", 
-                                  scales::comma(Stepwise_Box_Cox, accuracy = 1e-4)))
+  dplyr::mutate(StepwiseBoxCox = ifelse(dplyr::coalesce(StepwiseBoxCox, 0) == 0, "--", 
+                                  scales::comma(StepwiseBoxCox, accuracy = 1e-4)))
 knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
 pred_transformed = predict(transformed_model, selected_test_df)
@@ -697,15 +714,16 @@ performance_transformed = CalcTestMetrics(pred_transformed, act_transformed, n_t
 print(performance_transformed)
 ```
 
-Comparing models across coefficients, we see the signs agree except for `waterfront`, `condition`, and `sqft_adj_grade`. The stepwise Box-Cox model's coefficients for this set makes more sense because having a waterfront, a good condition home and more square footage should increase a home's price and not decrease it. 
+Comparing models across coefficients, we see the signs agree except for `waterfront` and `condition`. The stepwise Box-Cox model's coefficients for this set makes more sense because having a waterfront, a good condition home and more square footage should increase a home's price and not decrease it. 
 
 \newpage
 
 ## Ridge Regression
 
-In addition, we tested ridge, lasso and elastic net for building models.
+Next we attempt to use ridge, lasso and elastic net as techniques to remedy the OLS assumption violations seen in previous parts. We start with ridge regression first. 
 
 ```{r problem IV - Ridge regression}
+set.seed(1023)
 x = data.matrix(selected_train_df)
 y = log(kc.house.train.y)
 
@@ -741,8 +759,12 @@ performance_ridge = CalcTestMetrics(pred_ridge, act_ridge, n_ridge, p_ridge)
 print(performance_ridge)
 ```
 
+Ridge regression doesn't move the needle much in terms of predictive performance. Note that ridge does not perform variable selection. The variables that are missing are ones that were selected out from the stepwise step in this subsection. We will examine coefficients once all regularization models are fitted.
+
+## Lasso Regression
+
 ```{r problem IV - Lasso regression}
-library(glmnet)
+set.seed(1023)
 lasso_model = cv.glmnet(x,y,alpha=1, nlambda=100,lambda.min.ratio=0.0001)
 best_lambda_lasso = lasso_model$lambda.min
 
@@ -755,12 +777,12 @@ for (i in 1:length(coeff.lasso)) {
                    Lasso = coeff.lasso[i])
   coeff.lasso.df <- rbind(df, coeff.lasso.df)
 }
-coeff.q1.df <-
-  coeff.q1.df %>%
+
+coeff.df.regularized  <-
+  coeff.df.regularized  %>%
   dplyr::left_join(coeff.lasso.df, by = "Coefficients") %>%
   dplyr::mutate(Lasso = ifelse(dplyr::coalesce(Lasso, 0) == 0, "--", 
                                scales::comma(Lasso, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
 #Performance
 pred_lasso = predict(lasso_model, s = best_lambda_lasso, 
@@ -771,11 +793,16 @@ p_lasso <- dim(model.matrix(transformed_model))[2]
 
 performance_lasso = CalcTestMetrics(pred_lasso, act_lasso, n_lasso, p_lasso)
 print(performance_lasso)
-
 ```
-In this case, lasso regression still produced a model with 23 variables so no additional variables were dropped compared to ridge regression.
+
+Unfortunately we've come up short once again. There was no predictive performance improvement. Commentary on coefficients will come later.
+
+## Elastic Net
+
+The last set of regularized models we try will be elastic net, which is a blend of lasso and ridge. It is a technique that still performs variable selection can be thought of as a less harsh lasso.
 
 ```{r problem IV - Elastic net regression}
+set.seed(1023)
 enet_model = cv.glmnet(x,y,alpha=0.5, nlambda=100,lambda.min.ratio=0.0001)
 best_lambda_enet = enet_model$lambda.min
 
@@ -788,12 +815,11 @@ for (i in 1:length(coeff.en)) {
                    ElasticNet = coeff.en[i])
   coeff.en.df <- rbind(df, coeff.en.df)
 }
-coeff.q1.df <- 
-  coeff.q1.df %>%
+coeff.df.regularized <- 
+  coeff.df.regularized %>%
   dplyr::left_join(coeff.en.df, by = "Coefficients") %>%
   dplyr::mutate(ElasticNet = ifelse(dplyr::coalesce(ElasticNet, 0) == 0, "--", 
                                     scales::comma(ElasticNet, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
 
 #Performance
 pred_enet = predict(enet_model, s = best_lambda_enet, 
@@ -807,8 +833,10 @@ print(performance_enet)
 
 ```
 
-Elastic net regression without log transformation of price is included as another validation and comparison.
+There is a small predictive performance from elastic net. We wrap up this section with elastic net regression without log transformation of price is included as another validation and comparison.
+
 ```{r problem IV - Elastic net regression without transformation}
+set.seed(1023)
 x1= data.matrix(selected_train_df)
 y1= kc.house.train.y
 
@@ -821,45 +849,62 @@ coeff.en.names <- coeff.en@Dimnames[[1]]
 coeff.en.df <- data.frame()
 for (i in 1:length(coeff.en)) {
   df <- data.frame(Coefficients = coeff.en.names[i],
-                   ElasticNetNonTrans = coeff.en[i])
+                   ElasticNetNoTransform = coeff.en[i])
   coeff.en.df <- rbind(df, coeff.en.df)
 }
-coeff.q1.df <- 
-  coeff.q1.df %>%
+coeff.df.regularized <- 
+  coeff.df.regularized %>%
   dplyr::left_join(coeff.en.df, by = "Coefficients") %>%
-  dplyr::mutate(ElasticNetNonTrans = ifelse(dplyr::coalesce(ElasticNetNonTrans, 0) == 0, "--", 
-                                    scales::comma(ElasticNetNonTrans, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
+  dplyr::mutate(ElasticNetNoTransform = ifelse(dplyr::coalesce(ElasticNetNoTransform, 0) == 0, "--", 
+                                    scales::comma(ElasticNetNoTransform, accuracy = 1e-4)))
+knitr::kable(coeff.df.regularized, caption = "Model Coefficients")
 
 #Performance
 
 y_test1 = kc.house.test.y
 
-pred_enet = predict(enet_model1, s = best_lambda_enet, 
-                 newx = data.matrix(selected_test_df))[,1]
+pred_enet = predict(
+  enet_model1, 
+  s = best_lambda_enet, 
+  newx = data.matrix(selected_test_df)
+)[,1]
 act_enet <- y_test1
 n_enet <- dim(model.matrix(transformed_model))[1]
 p_enet <- dim(model.matrix(transformed_model))[2]
 
 performance_enet2 = CalcTestMetrics(pred_enet, act_enet, n_enet, p_enet)
 print(performance_enet2)
-
 ```
 
-Finally, we included robust regression due to our observation of potential outliers.
+Comparing across the coefficients the first thing to note is lasso doesn't perform any additional variable selection on top of the set of variables selected by stepwise. We could have opted for a larger lambda but the optimal lambda seems to be pretty lax. All regularized models have the same set of predictors.
+
+In terms of coefficient direction, there are a few interesting ones to point out. The first is `sqft_lot15`. The baseline model and the untransformed elastic net, suggest that a home surrounded by homes that are large decreases price. Perhaps we are detecting an effect where a home's price is relative to peers. In other words it's better to be a big fish in a small pond. Other coefficients' signs make sense like `yr_renovated` is positive because renovation boosts a home price and `year_built` because newer homes are more valuable.
+
+## Robust Regression
+
+Finally, we included robust regression due to our observation of potential outliers. We will use huber weights.
+
 ```{r problem IV - Robust regression}
+set.seed(1023)
 robust_model = rlm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df), psi = psi.huber)
 summary(robust_model)
+
+
+coeff.df.robust <- data.frame(Baseline = baseline.model$coefficients)
+coeff.df.robust$Coefficients <- rownames(coeff.df.robust)
+rownames(coeff.df.robust) <- NULL
+coeff.df.robust <- dplyr::select(coeff.df.robust, Coefficients, Baseline) 
 
 # Coefficients
 coeff.huber.df <- data.frame(Robust = robust_model$coefficients)
 coeff.huber.df$Coefficients <- rownames(coeff.huber.df)
-coeff.q1.df <-
-  coeff.q1.df %>%
+coeff.df.robust <-
+  coeff.df.robust %>%
   dplyr::left_join(coeff.huber.df, by = "Coefficients") %>%
+  dplyr::left_join(coeff.df.regularized[, c("ElasticNet", "Coefficients")], by = "Coefficients") %>%
   dplyr::mutate(Robust = ifelse(dplyr::coalesce(Robust, 0) == 0, "--",
                                scales::comma(Robust, accuracy = 1e-4)))
-knitr::kable(coeff.q1.df, caption = "Model Coefficients")
+knitr::kable(coeff.df.robust, caption = "Model Coefficients")
 
 #Performance
 pred_robust = predict(robust_model, selected_test_df)
@@ -872,34 +917,82 @@ print(performance_robust)
 
 ```
 
-With robust performance, it does not seem that outliers matter much (after transformation at least)
+The robust regression coefficient align with the other models. Again there was no predictive lift. As a final step we will check the huber weights to see how well robust regression dealt with outliers and leverage points.
 
 ```{r}
-#Weighted Least Squares
+set.seed(1023)
+huber.weights <- data.frame(Obs = c(1:nrow(selected_train_df)), resid = robust_model$resid, weight = robust_model$w)
+huber.weights <- huber.weights[order(robust_model$w), ]
 
-
+#Preview the data
+huber.weights[1:15, ]
 ```
+Interestingly the problem observations identified in previous parts (e.g 13244, 643, 11395, and 9986) did not appear in the lowest 15 weighted observations. Perhaps Huber wasn't able to accurately suppress the problematic points or they were selected out via the stepwise model.
+
+## Summary
 
 ```{r problem IV - R2 table}
 library(knitr)
 library(dplyr)
 
 results_df <- data.frame(
-  Model = c('Baseline', 'Stepwise', 'Transformed', 'Ridge', 'Lasso', 'Elastic Net', 'Robust'),
-  Adj.RSquared = c(performance_baseline["adj.rsquared"], performance_selected["adj.rsquared"], performance_transformed["adj.rsquared"],performance_ridge["adj.rsquared"],performance_lasso["adj.rsquared"],performance_enet["adj.rsquared"],performance_robust["adj.rsquared"]),
-  RSquared = c(performance_baseline["rsquared"], performance_selected["rsquared"], performance_transformed["rsquared"],performance_ridge["rsquared"],performance_lasso["rsquared"],performance_enet["rsquared"],performance_robust["rsquared"]), 
-  MSE = c(performance_baseline["mse"], performance_selected["mse"], performance_transformed["mse"],performance_ridge["mse"],performance_lasso["mse"],performance_enet["mse"],performance_robust["mse"]), 
-  MAE = c(performance_baseline["mae"], performance_selected["mae"], performance_transformed["mae"],performance_ridge["mae"],performance_lasso["mae"],performance_enet["mae"],performance_robust["mae"]) 
+  Model = c('Baseline', 'Stepwise', 'Transformed', 'Ridge', 'Lasso', 'Elastic Net', 'Robust', "Elatic Net (Untransformed)"),
+  Adj.RSquared = c(
+      performance_baseline["adj.rsquared"], 
+      performance_selected["adj.rsquared"],
+      performance_transformed["adj.rsquared"],
+      performance_ridge["adj.rsquared"],
+      performance_lasso["adj.rsquared"],
+      performance_enet["adj.rsquared"],
+      performance_robust["adj.rsquared"],
+      performance_enet2["adj.rsquared"]
+  ),
+  RSquared = c(
+      performance_baseline["rsquared"], 
+      performance_selected["rsquared"],
+      performance_transformed["rsquared"],
+      performance_ridge["rsquared"],
+      performance_lasso["rsquared"],
+      performance_enet["rsquared"],
+      performance_robust["rsquared"],
+      performance_enet2["rsquared"]
+  ), 
+  MSE = c(
+      performance_baseline["mse"], 
+      performance_selected["mse"], 
+      performance_transformed["mse"],
+      performance_ridge["mse"],
+      performance_lasso["mse"],
+      performance_enet["mse"],
+      performance_robust["mse"],
+      performance_enet2["mse"]
+  ), 
+  MAE = c(
+      performance_baseline["mae"], 
+      performance_selected["mae"], 
+      performance_transformed["mae"],
+      performance_ridge["mae"],
+      performance_lasso["mae"],
+      performance_enet["mae"],
+      performance_robust["mae"],
+      performance_enet2["mae"]
+  ) 
 )
 
 # Sort and display the table
 sorted_results_df <- dplyr::arrange(results_df, desc(Adj.RSquared))
 knitr::kable(sorted_results_df, caption = "Model Metrics")
-
 ```
 
+Overall, Elastic Net model is the best performing model as it has the highest adjusted R-squared value and the lowest MSE (Note that baseline and stepwise models did not undergo log transformation of the dependent variable so their MSE values cannot be directly compared to that of the other log-transformed models).
 
-Overall, lasso regression model is the best performing model as it has the highest adjusted R-squared value and the lowest MSE (Note that baseline and stepwise models did not undergo log transformation of the dependent variable so their MSE values cannot be directly compared to that of the other log-transformed models).
+```{r include=FALSE}
+all_models <-
+  coeff.q1.df %>%
+  dplyr::left_join(coeff.df.regularized[, -2], by = "Coefficients") %>% #drop extra Baseline column
+  dplyr::left_join(coeff.df.robust[, c("Robust", "Coefficients")], by = "Coefficients")
+all_models
+```
 
 \newpage
 # V. Challenger Models (15 points) {#section5}
@@ -1556,20 +1649,20 @@ The plan to handle pipeline failures is to persist every production model and ev
 \newpage
 # VIII. Conclusion (5 points) {#section8}
 
-This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with lasso regression achieving the highest adjusted R-squared (0.775) and lowest MSE. We developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
+This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.758) and lowest MSE. We developed alternative models using random forest, which achieved an adjusted R-squared value of 0.65. 
 
-Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 77% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
+Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 75% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
 
-Our simple linear regression analysis found that the variables with most significant p values are bathrooms, view, grade, latitude, year built, sqft_living15, year of purchase, and number of floors. All of these variables except year built is positively correlated with price. An interesting insight is that the timing of the house sale also matters, because purchases being made in January and February has a negative effect on house prices.
+Our simple linear regression analysis found that the variables with most significant p-values are `bathrooms`, `sqft_living`, `view`, `year_built`, `yr_renovated`, `lat`, `sqft_living15`, the quality adjusted measures. All of these variables except year built is positively correlated with price. An interesting insight is that the timing of the house sale also matters, because purchases being made in January and February has a negative effect on house prices, suggesting that there is seasonality.
 
 ```{r}
 knitr::kable(sorted_results_df, caption = "Model Metrics")
-knitr::kable(dplyr::select(coeff.q1.df,-c(ElasticNetNonTrans,Baseline,Stepwise)), caption = "Model Coefficients (showing log-transformed models only")
+knitr::kable(dplyr::select(all_models, -c(ElasticNetNoTransform, Baseline, Stepwise)), caption = "Model Coefficients (showing log-transformed models only")
 ```
 
 Our random forest model also highlighted a set of variables with highest importance, which includes grade, sqft_living, sqft_above, sqft_living15, bathrooms and latitude. Both random forest and linear regression models agree that higher latitude may predict higher house prices, suggesting that perhaps some less desirable areas correspond with lower latitude. In both types of models, higher grade (quality of construction and design) and higher number of bathrooms also associates with higher house prices. In contrast, most of the square footage variables relevant to random forest did not show strong significance in the linear models. It is possible that the relationship between square footage with price are non-linear and better captured by a non-parametric model like the random forest. All the square footage-related metrics also likely run into multicollinearity issues with linear regression.
 
-In conclusion, we propose a final lasso regression model that could predict house sales prices based on commonly measured variables. We believe such a model can be a helpful tool for consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that influence home values.
+In conclusion, we propose a final elastic net regression model that could predict house sales prices based on commonly measured variables. We believe such a model can be a helpful tool for consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that influence home values.
 
 \newpage
 ## Bibliography (7 points)
