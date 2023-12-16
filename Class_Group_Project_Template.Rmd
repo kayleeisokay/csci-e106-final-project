@@ -120,7 +120,8 @@ Finally, the performance of each model was evaluated on its accuracy in predicti
 ```
 
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
+#All library dependencies loaded here
 library(ggplot2)
 library(corrplot)
 library(readr)
@@ -130,6 +131,16 @@ library(lmtest)
 library(nortest)
 library(car)
 library(glmnet)
+library(MASS)
+library(knitr)
+library(caret)
+library(rpart)
+library(nnet)
+library(stringr)
+library(readr)
+library(kableExtra)
+library(mlr)
+library(rpart.plot)
 ```
 
 ```{r}
@@ -212,13 +223,13 @@ cor_matrix = round(cor(train), 3)
 cor_matrix
 ```
 
-```{r}
+```{r, fig.height=7}
 corrplot(cor_matrix, method = "circle")
 ```
 
-To further examine the top variables correlating with "price", we plot several scatter plots below. This initial analysis shows that price is indeed positively correlated with `sqft_living`, `grade`, `sqft_above` and `sqft_living15`. It also appears that the prices of homes show a large range from 75,000 to 7,700,000, with most data points concentrated on the lower half of this scale. We will perform further testing during model development to understand if a transformation of the price variable would be beneficial.
+To further examine the top variables correlating with `price`, we plot several scatter plots below. This initial analysis shows that price is indeed positively correlated with `sqft_living`, `grade`, `sqft_above` and `sqft_living15`. It also appears that the prices of homes show a large range from 75,000 to 7,700,000, with most data points concentrated on the lower half of this scale. We will perform further testing during model development to understand if a transformation of the price variable would be beneficial.
 
-```{r, fig.width=7, }
+```{r, fig.width=7, fig.height=7}
 par(mfrow=c(2,2))
 
 top.corr<-c("sqft_living", "grade", "sqft_above", "sqft_living15")
@@ -302,7 +313,7 @@ The barplots and boxplots further indicate that distribution of price is skewed 
 
 
 \newpage
-# III. Model Development Process (15 points) {#section3}
+# Section III. Model Development Process (15 points) {#section3}
 
 ```{r, include = FALSE}
 # Build a regression model to predict price.  And of course, create the train data set which contains 70% of the data and use set.seed (1023). The remaining 30% will be your test data set. Investigate the data and combine the level of categorical variables if needed and drop variables. For example, you can drop id, Latitude, Longitude, etc.
@@ -496,7 +507,7 @@ As expected, the results of the Breusch Pagan test confirm the visual results in
 
 \newpage
 
-# IV. Model Performance Testing (15 points) {#section4}
+# Section IV. Model Performance Testing (15 points) {#section4}
 
 ```{r, include = FALSE}
 # *Use the test data set to assess the model performances. Here, build the best multiple linear models by using the stepwise both ways selection method. Compare the performance of the best two linear models. Make sure that model assumption(s) are checked for the final linear model. Apply remedy measures (transformation, etc.) that helps satisfy the assumptions. In particular you must deeply investigate unequal variances and multicollinearity. If necessary, apply remedial methods (WLS, Ridge, Elastic Net, Lasso, etc.). *
@@ -656,7 +667,7 @@ Variable selection methods don't do well to remedy these particular issues. If w
 
 ```{r part IV - Applying transformantions, fig.width=8}
 set.seed(1023)
-library(MASS)
+
 boxcox(selected_linear_model,lambda=seq(-0.2,0.2,0.01))
 transformed_model = lm(log(price) ~ . , data = cbind(price = kc.house.train.y, selected_train_df))
 summary(transformed_model)
@@ -932,9 +943,6 @@ Interestingly the problem observations identified in previous parts (e.g 13244, 
 ## Summary
 
 ```{r problem IV - R2 table}
-library(knitr)
-library(dplyr)
-
 results_df <- data.frame(
   Model = c('Baseline', 'Stepwise', 'Transformed', 'Ridge', 'Lasso', 'Elastic Net', 'Robust', "Elatic Net (Untransformed)"),
   Adj.RSquared = c(
@@ -995,9 +1003,11 @@ all_models
 ```
 
 \newpage
-# V. Challenger Models (15 points) {#section5}
+# Section V. Challenger Models (15 points) {#section5}
 
-*Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
+```{r include = FALSE}
+# *Build an alternative model based on one of the following approaches to predict price: regression tree, NN, or SVM. Explore using a logistic regression. Check the applicable model assumptions. Apply in-sample and out-of-sample testing, backtesting and review the comparative goodness of fit of the candidate models. Describe step by step your procedure to get to the best model and why you believe it is fit for purpose.*
+```
 
 Part V
 
@@ -1010,18 +1020,6 @@ Analysis of residuals showed that while there was significant skewness on the le
 
 ## Building baseline regression tree model
 ```{r Part V, fig.width=7}
-# Load libraries
-library(caret)
-library(rpart)
-library(nnet)
-library(knitr)
-library(dplyr)
-library(stringr)
-library(readr)
-library(kableExtra)
-library(mlr)
-library(rpart.plot)
-
 # Model building
 
 # Build basic regression tree
@@ -1205,7 +1203,7 @@ kable(model_results, format = "markdown")
 Overall, the regression tree models achieve pseudo R squared values of 0.60-0.66. A 2 sided t-test confirmed that there is no significant difference between actual and predicted values. This leads us to believe that the regression trees are reasonable models for predicting house prices in this data set, but they still under-perform compared to some of the linear models shown in previous sections.
 
 \newpage
-# VI. Model Limitation and Assumptions (15 points) {#section6}
+# Section VI. Model Limitation and Assumptions (15 points) {#section6}
 
 ## Overview
 
@@ -1269,9 +1267,6 @@ As seen in the metrics above, the Regression Tree performs much better in terms 
 ## Diagnostic plots
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-
 tree.residuals <- tree.actual - tree.predicted
 enet.residuals <- enet.actual - enet.predicted
 exp.enet.residuals <- enet.actual.exp - exp(enet.predicted)
@@ -1341,7 +1336,7 @@ It was noted previously that there were problems with heteroskedacity and non-no
 Based on the performance of their performance with the test data, the two models attain a similar level of prediction error. Despite this, the Regression Tree has a much larger Pseudo R-Squared value suggesting that it is better suited for this data. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
 
 \newpage
-# VII. Ongoing Model Monitoring Plan (5 points) {#section7}
+# Section VII. Ongoing Model Monitoring Plan (5 points) {#section7}
 
 ## Overview
 
@@ -1361,7 +1356,7 @@ For model monitoring there are four areas to track:
 
 Below we will provide more details and concrete examples on how the model monitoring plan will be implemented based on our team member's practical experience.
 
-## 1. Prediction Stability
+## Prediction Stability
 
 This subsection concerns itself with stability of predictions. Price predictions often are used by loan originators to size a loan or as an input to a consumer product. For example, assume the product is a home price recommendation for homeowners looking to see. If the homeowners aka the customers get highly variable sale price recommendations month to month, it'll result in subpar user experience, creating distrust between the customer and the firm. 
 
@@ -1453,7 +1448,6 @@ In practice, model stability tests tend to be overly sensitive so we will trigge
 
 ```{r}
 # Simulate arrival of new data and compare this month's prediction performance to last month's
-library(nortest)
 
 #Current Model
 cutoff_date <- adjust_months(cutoff_date, 1)
@@ -1513,8 +1507,6 @@ For this section we track model metrics over time to ensure the model continues 
 If any metrics of the production model is worse than that of baseline production model, we will trigger a slack message.
 
 ```{r}
-library(ggplot2)
-
 #Iterate over folds
 roll_model <- function(cutoff_date, form){
   
@@ -1599,7 +1591,6 @@ In both the `Adjusted R Squared over Months` and `RMSE over Months` plots, the p
 When new data comes in at monthly interval we will perform checks to prevent malformed data from entering the model. First we create graphs to add to a dashboard for visual inspection. These are the `Residuals vs Leverage` plot to detect outliers, leverage points or both and the `Cook's Distance` chart to detect influential points. The hope is to catch problematic points early, before they reach the model.
 
 ```{r}
-library(olsrr)
 incremental_data <- curr_test_data
 incremental.model <- lm(price ~ . -year, data = incremental_data)
 
@@ -1686,7 +1677,7 @@ The plan to handle pipeline failures is to persist every production model and ev
 ![Model Monitoring Architecture](img/model_monitoring.png)
 
 \newpage
-# VIII. Conclusion (5 points) {#section8}
+# Section VIII. Conclusion (5 points) {#section8}
 
 This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.759) and lowest MSE. We developed alternative models using regression tree, which achieved an adjusted R-squared value of 0.65. 
 
@@ -1706,7 +1697,9 @@ In conclusion, we propose a final elastic net regression model that could predic
 \newpage
 ## Bibliography (7 points)
 
-*Please include all references, articles and papers in this section.*
+```{r, include = FALSE}
+# *Please include all references, articles and papers in this section.*
+```
 
 1. McGill University
 - http://www.med.mcgill.ca/epidemiology/joseph/courses/EPIB-621/centered_var.pdf
@@ -1739,8 +1732,9 @@ https://www.ciclt.net/sn/clt/capitolimpact/gw_ziplist.aspx?zip=980&stfips=&state
 Lastly, we would like to express our sincere appreciation for the instructors and teaching assistants of CSCI E-106 for sharing their knowledge and support for this project.
 
 ## Appendix (3 points)
-
-*Please add any additional supporting graphs, plots and data analysis.*
+```{r, include = FALSE}
+# *Please add any additional supporting graphs, plots and data analysis.*
+```
 
 Additional plots and details from stepwise variable selection.
 ```{r, fig.width=7}
