@@ -768,9 +768,10 @@ library(rpart.plot)
 # Build basic regression tree
 tree_model <- rpart(price ~ ., data = train)
 
-# Visualize the decision tree and feature importance
-# par(mfrow=c(1,2))  
+# Visualize the decision tree
 rpart.plot(tree_model, shadow.col = "gray", nn = TRUE)
+
+# Visualize important features:
 feature.imp<-data.frame(importance=tree_model$variable.importance)
 
 feature.imp %>%
@@ -779,7 +780,7 @@ feature.imp %>%
    geom_pointrange(aes(ymin = 0, ymax = importance), color = "cadetblue", size = .3) +
    theme_minimal() +
    coord_flip() +
-   labs(x = "", y = "Importance",main="Importance of model features")
+   labs(x = "", y = "Importance",title="Importance of model features")
 ```
 
 ```{r}
@@ -1065,13 +1066,22 @@ It was noted previously that there were problems with heteroskedacity and non-no
 
 Based on the performance of these models with the test data, there does not appear to be any major issues with these models. Both of them perform well with high Pseudo R-squared values. One issue to consider is the RMSE of 2.102e+05 and 2.281+05 which will impact interpretation of price data on the low end. Another point would be that the data used to train these models only contains data from two years and for two specific counties. Model developed on this data set may lack external validity.
 
+\newpage
 ## VII. Ongoing Model Monitoring Plan (5 points)
 
 *How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
 
 ### Overview
 
-For model monitoring there are four areas to track 1) model stability, 2) prediction performance, 3) incremental data quality and 4) data pipeline failures. 
+For model monitoring there are four areas to track:
+
+1) model stability (e.g. comparing prediction errors, MSE, and mean price values on a new batch of data to older batches by T test. Also includes normality testing on residuals from new batch of predictions.)
+
+2) prediction performance over time (e.g. comparing pseudo R2 and MSE values over the period of time since model has been in use. Deviations may suggest changing market conditions affecting model performance)
+
+3) incremental data quality (e.g. monitor if there are outliers/ influential points in incoming new data using tools like Residuals vs Leverage plot)
+
+4) data pipeline failures 
 
 ### 1. Prediction Stability
 
@@ -1080,6 +1090,7 @@ This subsection concerns itself with stability of predictions. Price predictions
 To check for prediction stability the approach is to store last month's prediction values in a database table and the model itself in an S3 bucket as an RDS file. We are assuming new data arrives in monthly batches because that is the frequency of our data set.
 
 ```{r echo=TRUE}
+# Helper function to define appropriate window for "old data"
 adjust_months <- function(date, num_months) {
   # Convert to character for easier manipulation
   date_str <- as.character(date)
@@ -1104,6 +1115,8 @@ adjust_months <- function(date, num_months) {
 Since we do not have infrastructure stood up we use the following code block to simulate pulling in previous month's model and corresponding predictions. We sample the data using a sliding window approach. The past 12 months of data are used to train the model and the subsequent month is the test set. This different from the world in previous parts because here we are simulating the arrival of new data.
 
 ```{r section7previousmodel}
+# Simulate existing model training and performance test 
+# (In this example, we use data from 2014/01-2015/01 for training and 2015/01-2015/02 as testing) 
 concat_date <- year*100 + month
 kc.house.df$yyyymm <- concat_date
 
@@ -1161,6 +1174,7 @@ For assumption checking, we use Anderson-Darling test to check normality of pred
 In practice, model stability tests tend to be overly sensitive so we will trigger Slack warnings when the p-values of the test are less than 0.01. 
 
 ```{r}
+# Simulate arrival of new data and compare this month's prediction performance to last month's
 library(nortest)
 
 #Current Model
@@ -1216,7 +1230,7 @@ The most important of these is MSE as we do not want our model to fluctuate in t
 
 For this section we track model metrics over time to ensure the model continues to be on par. Metrics we choose are adjusted $R^2$ and RMSE. We apply a function to create a rolling window for the model to train on and then test with data outside the window. We collect the metrics and plot them over time. 
 
-If any metrics fall below the baseline production model, we will trigger a slack message.
+If any metrics of the production model is worse than the baseline production model, we will trigger a slack message.
 
 ```{r}
 library(ggplot2)
@@ -1298,7 +1312,7 @@ ggplot(metrics_table, aes(x = date, y = as.numeric(rmse), color = model.name)) +
   theme_minimal()
 ```
 
-The `Adjusted R Squared over Months` plot will have no triggers. `RMSE over Months` will trigger on every month.
+In both the `Adjusted R Squared over Months` and `RMSE over Months` plots, the production model is working much better than baseline model as we expect, so no alerts will be triggered.
 
 ### 3. Incremental Data Quality Check
 
