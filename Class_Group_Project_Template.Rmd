@@ -564,7 +564,7 @@ performance_baseline = CalcTestMetrics(pred, act, n, p)
 performance_baseline
 ```
 
-The adjusted $R^2$ on the test set for the baseline OLS model is 0.751.
+The adjusted $R^2$ on the test set for the baseline OLS model is 0.737 which is only slightly less than 0.7469.
 
 ## Stepwise Both Ways {#section4c}
 
@@ -989,7 +989,7 @@ results_df <- data.frame(
 
 # Sort and display the table
 sorted_results_df <- dplyr::arrange(results_df, desc(Adj.RSquared))
-knitr::kable(sorted_results_df, caption = "Model Metrics", format = "markdown")
+knitr::kable(sorted_results_df, caption = "Model Metrics")
 ```
 
 Overall, Elastic Net model is the best performing model as it has the highest adjusted R-squared value and the lowest MSE (Note that baseline and stepwise models did not undergo log transformation of the dependent variable so their MSE values cannot be directly compared to that of the other log-transformed models).
@@ -1013,9 +1013,7 @@ Part V
 
 ## Overview
 
-We first built a basic regression tree model as a baseline non-parametric challenger model; results were not particularly strong (r-squared at ~0.65, which is lower than the r-squared of the linear regression model). We then tuned hyperparameters for the decision tree using random search (using RMSE and MAE as the metrics to optimise) and backtested the model using a cross-validation resampling approach. This did not achieve significant improvement in performance (r-squared at ~0.60). Ultimately we chose this regression tree model as our challenger model, as it is relatively simple to build and implement, and fairly explainable (e.g. the splits tend to be easy to understand). 
-
-Analysis of residuals showed that while there was significant skewness on the left and right tails, the normality assumption broadly holds; and a 2 sided t test confirmed that there is no significant difference between actual and predicted values. More complex models e.g. deep neural networks would likely perform better, but would likely consume too many computational resources for our purposes.
+We first built a basic regression tree model as a baseline non-parametric challenger model; results were not particularly strong (r-squared at ~0.65, which is lower than the r-squared of the linear regression model). We then tuned hyperparameters for the decision tree using random search (using RMSE and MAE as the metrics to optimise) and backtested the model using a cross-validation resampling approach. This failed to improve performance (slight increase in RMSE and a decline in r-squared to ~0.60). Ultimately we chose the basic regression tree model as our challenger model, as it is relatively simple to build and implement, and fairly explainable (e.g. the splits tend to be easy to understand). Analysis of residuals showed that while there was significant skewness on the left and right tails, the normality assumption broadly holds; and a 2 sided t test confirmed that there is no significant difference between actual and predicted values. More complex models e.g. deep neural networks would likely perform better, but would likely consume too many computational resources for our purposes.
 
 
 ## Building baseline regression tree model
@@ -1216,26 +1214,26 @@ We have selected a regression tree as the benchmark model because we believe tha
 ```{r}
 #Actual and predicted values for the two models
 tree.actual = test$price
-enet.actual = y_test # this is log-transformed
+enet.actual = y_test
 tree.predicted = predict(tree_model_tuned, newdata = test)
 enet.predicted = predict(enet_model, s = best_lambda_enet,
                  newx = data.matrix(selected_test_df))[,1]
  
-#Summarize R2 and error statistics for tree regression
+#Summarize statistics for tree regression
 tree.sse <- sum((tree.actual - tree.predicted)^2)
 tree.rmse <- sqrt(mean((tree.actual - tree.predicted)^2))
 tree.mae <- mean(abs(tree.actual - tree.predicted))
 tree.sst <- sum((tree.actual - mean(tree.actual))^2)
 tree.pseudo_r_squared <- 1 - (tree.sse / tree.sst)
 
-#Summarize R2 statistics for elastic net on enet predictions (based on log-transformed price)
+#Summarize statistics for elastic net on log transformed enet predictions
 enet.sse <- sum((enet.actual - enet.predicted)^2)
 #enet.rmse <- sqrt(mean((enet.actual - enet.predicted)^2))
 #enet.mae <- mean(abs(enet.actual - enet.predicted))
-enet.sst <- sum((enet.actual - mean(enet.actual))^2)
+enet.sst <- sum((enet.actual - mean(tree.actual))^2)
 enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
 
-# Summarize error statistics for enet predictions (based on "un-logged" price)
+# Summarize statistics for exponetiated enet predictions
 non_transformed_predictions <- exp(enet.predicted)
 enet.actual.exp = y_test1
 enet.sse.exp <- sum((enet.actual.exp - non_transformed_predictions)^2)
@@ -1262,7 +1260,7 @@ if (relative_fit < 1) {
 }
 ```
 
-As seen in the metrics above, the Regression Tree performs much better in terms of R-Squared than the Elastic Net with values of ~0.75 vs ~0.60, respectively. The relative fit between elastic net and regression tree was 1.26, which suggests that the Elastic Net model is a much better fit for the data. Both models have similar RMSE for their prediction error.
+As seen in the metrics above, the Regression Tree performs much better in terms of R-Squared than the Elastic Net with values of 0.878 vs 0.675, respectively. The relative fit between elastic net and regression tree was 0.7683983, which suggests that the Regression Tree model is a much better fit for the data. Both models have similar RMSE for their prediction error 2.28e+05 with the Regression Tree and 2.10e+05 for the Elastic Net.
 
 ## Diagnostic plots
 
@@ -1338,23 +1336,23 @@ Based on the performance of their performance with the test data, the two models
 \newpage
 # Section VII. Ongoing Model Monitoring Plan (5 points) {#section7}
 
+*How would you picture the model needing to be monitored, which quantitative thresholds and triggers would you set to decide when the model needs to be replaced? What are the assumptions that the model must comply with for its continuous use?*
+
 ## Overview
 
 For model monitoring there are four areas to track:
 
-1) Model stability 
-- e.g. Comparing prediction errors and mean and variance of predicted values on a new batch of data to older batches
-- Normality testing on residuals from a new batch of predictions
+1) model stability 
+- e.g. Comparing prediction errors, MSE, and mean price values on a new batch of data to older batches by T test
+- Also includes normality testing on residuals from a new batch of predictions
 
-2) Prediction performance 
-- e.g. Comparing pseudo R2 and MSE values of our baseline and production models with historical data over time; strong fluctuations in the production model performance compared to baseline model suggests quality issues with the production model
+2) prediction performance 
+- comparing pseudo R2 and MSE values of our baseline and production models over a longer period of time; strong deviations and flipping of baseline/production model performance may suggest quality issues with the production model
 
-3) Incremental data quality
+3) incremental data quality
 - e.g. monitor for outliers/ influential points in incoming new data using tools like Residuals vs Leverage plot and Cook's distance
 
-4) data pipeline failures 
-
-Below we will provide more details and concrete examples on how the model monitoring plan will be implemented based on our team member's practical experience.
+4) data pipeline failures. 
 
 ## Prediction Stability
 
@@ -1436,7 +1434,7 @@ Now we simulate getting a new batch of data and fitting the model on new data. W
 
 2. F-test for the variance of the predictions
 
-  - To determine if prediction variance is drifting from month to month
+  - To determine if prediction variance is drifiting from month to month
 
 3. T-test on the mean squared error. 
 
@@ -1679,7 +1677,7 @@ The plan to handle pipeline failures is to persist every production model and ev
 \newpage
 # Section VIII. Conclusion (5 points) {#section8}
 
-This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.759) and lowest MSE. We developed alternative models using regression tree, which achieved an adjusted R-squared value of 0.65. 
+This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.758) and lowest MSE. We developed alternative models using regression tree, which achieved an adjusted R-squared value of 0.65. 
 
 Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 75% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
 
@@ -1687,7 +1685,7 @@ Our simple linear regression analysis found that the variables with most signifi
 
 ```{r}
 knitr::kable(sorted_results_df, caption = "Model Metrics")
-knitr::kable(dplyr::select(all_models, -c(ElasticNetNoTransform, Baseline, Stepwise)), caption = "Model Coefficients (showing log-transformed models only)")
+knitr::kable(dplyr::select(all_models, -c(ElasticNetNoTransform, Baseline, Stepwise)), caption = "Model Coefficients (showing log-transformed models only")
 ```
 
 Our regression tree model also highlighted a set of variables with highest importance, which includes grade, sqft_living, sqft_above, sqft_living15, bathrooms and latitude. Both regression tree and linear regression models agree that higher latitude may predict higher house prices, suggesting that perhaps some less desirable areas correspond with lower latitude. In both types of models, higher grade (quality of construction and design) and higher number of bathrooms also associates with higher house prices. In contrast, most of the square footage variables relevant to regression tree did not show strong significance in the linear models. It is possible that the relationship between square footage with price are non-linear and better captured by a non-parametric model like the regression tree. All the square footage-related metrics also likely run into multicollinearity issues with linear regression.
