@@ -10,7 +10,7 @@ author:
 - Zhenzhen Yin
 tags: [logistic, neural networks, regression trees]
 abstract: |
-  We aimed to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Our dataset contained historical home sales prices of 21,613 houses in Kings County, USA (May 2014-May 2015), out of which we randomly sampled 70% for training and 30% for testing. We selected several significant features using feature selection methods to build the models. Seven different linear regression models were developed using R and compared against each other, with lasso regression achieving the highest adjusted R-squared (0.775). In addition, we developed alternative models using regression trees, which achieved an adjusted R-squared value of 0.65.
+  We aimed to develop models for predicting house prices in Kings County, USA using statistical modeling and machine learning approaches. Our dataset contained historical home sales prices of 21,613 houses in Kings County, USA (May 2014-May 2015), out of which we randomly sampled 70% for training and 30% for testing. We selected several significant features using feature selection methods to build the models. Seven different linear regression models were developed using R and compared against each other, with elastic net regression achieving the highest adjusted R-squared (~0.759). In addition, we developed alternative models using regression trees, which achieved an adjusted R-squared value of 0.65.
   
   In conclusion, we proposed a model that could predict house sales prices based on commonly measured variables. We believe such a model can serve as a helpful tool for prospective consumers and real estate service providers to estimate the value of future properties on the market, and for them to understand significant factors that may increase or decrease home values. Importantly, we expect this model to be valid only within the geographical region of King County and for a limited period of time into the future. It is subject to changes in the market and broader economic conditions, thus we also provided a detailed model monitoring plan to alert us of significant deviations from our model. 
 date: "`r format(Sys.time(), '%d %B %Y')`"
@@ -108,7 +108,7 @@ In this project, our goal is to build a statistical model that can predict house
 
 Using this framework, we built several different models using linear regression and regression tree methods. First, we built a baseline ordinary least squares (OLS) model using all available variables. Then we performed stepwise variable selection to ensure inclusion of only significant variables. Diagnostic tests at this point indicated issues with normality assumption, multicollinearity, and constant variance assumption. These issues were largely resolved by a log transformation of the dependent variable as suggested by Box-Cox analysis. We further built models using ridge, lasso, and elastic net regression, as well as a robust regression to account for any effects from outliers. As an additional comparison, we also built a regression tree model and employed hyperparameter tuning procedures. 
 
-Finally, the performance of each model was evaluated on its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our lasso regression model (adjusted R-squared = 0.775). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
+Finally, the performance of each model was evaluated on its accuracy in predicting house prices in the test set, specifically by examining the adjusted R-squared and MSE of predicted values. Based on that, we propose that the best predictive model is our elastic net regression model (adjusted R-squared = 0.759). Our top performing models indicated that the most important factors that influence house prices in King County, USA are bathrooms, view, grade, latitude, year built, year of purchase, and number of floors. This model may be useful for estimating property prices for home buyers, sellers, or property market professionals. It can also contribute to research on key factors contributing to home prices. Importantly, we expect the model to be valid only in geographical locations within King County and within a limited time frame into the future. Therefore, we have also detailed a model monitoring plan to detect substantial deviations of our model in the future.
 
 \newpage
 # Section II. Description of the Data and Quality (15 points) {#section2}
@@ -1213,27 +1213,27 @@ We have selected a regression tree as the benchmark model because we believe tha
 
 ```{r}
 #Actual and predicted values for the two models
-tree.actual = test$price
-enet.actual = y_test
+tree.actual = test$price # no log transformation
+enet.actual = y_test # log transformed price
 tree.predicted = predict(tree_model_tuned, newdata = test)
 enet.predicted = predict(enet_model, s = best_lambda_enet,
                  newx = data.matrix(selected_test_df))[,1]
  
-#Summarize statistics for tree regression
+#Summarize R2 and error statistics for tree regression
 tree.sse <- sum((tree.actual - tree.predicted)^2)
 tree.rmse <- sqrt(mean((tree.actual - tree.predicted)^2))
 tree.mae <- mean(abs(tree.actual - tree.predicted))
 tree.sst <- sum((tree.actual - mean(tree.actual))^2)
 tree.pseudo_r_squared <- 1 - (tree.sse / tree.sst)
 
-#Summarize statistics for elastic net on log transformed enet predictions
+#Summarize R2 statistics for elastic net on log transformed price predictions
 enet.sse <- sum((enet.actual - enet.predicted)^2)
 #enet.rmse <- sqrt(mean((enet.actual - enet.predicted)^2))
 #enet.mae <- mean(abs(enet.actual - enet.predicted))
-enet.sst <- sum((enet.actual - mean(tree.actual))^2)
+enet.sst <- sum((enet.actual - mean(enet.actual))^2)
 enet.pseudo_r_squared <- 1 - (enet.sse / enet.sst)
 
-# Summarize statistics for exponetiated enet predictions
+# Summarize error statistics for "un-transformed" price predictions
 non_transformed_predictions <- exp(enet.predicted)
 enet.actual.exp = y_test1
 enet.sse.exp <- sum((enet.actual.exp - non_transformed_predictions)^2)
@@ -1260,7 +1260,7 @@ if (relative_fit < 1) {
 }
 ```
 
-As seen in the metrics above, the Regression Tree performs much better in terms of R-Squared than the Elastic Net with values of 0.878 vs 0.675, respectively. The relative fit between elastic net and regression tree was 0.7683983, which suggests that the Regression Tree model is a much better fit for the data. Both models have similar RMSE for their prediction error 2.28e+05 with the Regression Tree and 2.10e+05 for the Elastic Net.
+As seen in the metrics above, the Elastic Net performs much better in terms of R-Squared than the Regression tree with values of ~0.75 vs ~0.60, respectively. The relative fit between elastic net and regression tree was 1.26, which suggests that the Elastic Net model is a much better fit for the data. Both models have similar RMSE for their prediction error.
 
 ## Diagnostic plots
 
@@ -1677,7 +1677,7 @@ The plan to handle pipeline failures is to persist every production model and ev
 \newpage
 # Section VIII. Conclusion (5 points) {#section8}
 
-This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (0.758) and lowest MSE. We developed alternative models using regression tree, which achieved an adjusted R-squared value of 0.65. 
+This project aims to develop statistical models for predicting house prices in Kings County, USA. Using our training dataset, we built seven different linear regression models and compared them against each other, with elastic net regression achieving the highest adjusted R-squared (~0.759) and lowest MSE. We developed alternative models using regression tree, which achieved an adjusted R-squared value of 0.65. 
 
 Below we show the performance and coefficient comparisons between linear models again. Aside from baseline and stepwise selection models (which are not log-transformed), all other linear models show very comparable performance. We believe that the lasso regression model is our champion model. Its high adjusted R-squared value means that it can explain over 75% of the variation in house prices seen in the dataset, and its low MSE value indicates its accuracy when predicting house prices in the test dataset. 
 
